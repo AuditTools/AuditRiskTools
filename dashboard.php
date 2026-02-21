@@ -1,12 +1,35 @@
-<?php include 'includes/header.php'; ?>
-<?php include 'includes/sidebar.php'; ?>
-
 <?php
-$audit_id = $_GET['audit_id'] ?? null;
+/**
+ * SRM-Audit - Dashboard
+ * Main dashboard with audit overview
+ */
+session_start();
+require_once 'functions/db.php';
+require_once 'functions/auth.php';
 
-if (!$audit_id) {
-    echo "<div class='alert alert-danger'>No Audit Selected</div>";
+// Check authentication
+requireLogin();
+
+$userId = $_SESSION['user_id'];
+$auditId = isset($_GET['audit_id']) ? intval($_GET['audit_id']) : 0;
+
+// If audit_id provided, verify ownership and load data
+$audit = null;
+if ($auditId > 0) {
+    $stmt = $pdo->prepare("SELECT a.*, o.organization_name, o.industry 
+                          FROM audit_sessions a 
+                          JOIN organizations o ON a.organization_id = o.id 
+                          WHERE a.id = ? AND o.user_id = ?");
+    $stmt->execute([$auditId, $userId]);
+    $audit = $stmt->fetch();
+    
+    if (!$audit) {
+        $auditId = 0; // Invalid audit
+    }
 }
+
+include 'includes/header.php';
+include 'includes/sidebar.php';
 ?>
 
 <h2 class="mb-4">Audit Dashboard</h2>
