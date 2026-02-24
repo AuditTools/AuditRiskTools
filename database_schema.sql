@@ -8,7 +8,7 @@
 
 -- Create Database
 CREATE DATABASE IF NOT EXISTS audit;
-USE srm_audit;
+USE audit;
 
 -- ====================================================
 -- 1️⃣ USERS TABLE

@@ -23,6 +23,10 @@ try {
     switch ($action) {
         case 'create':
             // Create new audit session
+            if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+                throw new Exception('Invalid CSRF token');
+            }
+
             $orgId = intval($_POST['organization_id']);
             $sessionName = trim($_POST['session_name'] ?? '');
             $digitalScale = $_POST['digital_scale'];
@@ -71,6 +75,10 @@ try {
             
         case 'update':
             // Update audit session
+            if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+                throw new Exception('Invalid CSRF token');
+            }
+
             $auditId = intval($_POST['id']);
             $sessionName = trim($_POST['session_name'] ?? '');
             $digitalScale = $_POST['digital_scale'];

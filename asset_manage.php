@@ -1,327 +1,250 @@
 <?php
-/**
- * SRM-Audit - Asset Management
- * Manage assets for selected audit session
- */
 session_start();
 require_once 'functions/db.php';
 require_once 'functions/auth.php';
 
-// Check authentication
 requireLogin();
 
 $userId = $_SESSION['user_id'];
-$auditId = isset($_GET['audit_id']) ? intval($_GET['audit_id']) : 0;
+$audit_id = intval($_GET['audit_id'] ?? ($_SESSION['active_audit_id'] ?? 0));
+$selectedOrgId = intval($_GET['org_id'] ?? 0);
+$assets = [];
+$pageError = '';
 
-// Verify audit belongs to user's organization
-if ($auditId > 0) {
-    $stmt = $pdo->prepare("SELECT a.*, o.organization_name 
-                          FROM audit_sessions a 
-                          JOIN organizations o ON a.organization_id = o.id 
-                          WHERE a.id = ? AND o.user_id = ?");
-    $stmt->execute([$auditId, $userId]);
-    $audit = $stmt->fetch();
-    
-    if (!$audit) {
-        header('Location: audit_sessions.php?error=invalid_audit');
-        exit();
+$stmtOrgList = $pdo->prepare("SELECT id, organization_name FROM organizations WHERE user_id = ? AND is_active = 1 ORDER BY organization_name ASC");
+$stmtOrgList->execute([$userId]);
+$organizations = $stmtOrgList->fetchAll(PDO::FETCH_ASSOC);
+
+$stmtAuditList = $pdo->prepare("SELECT a.id, a.organization_id, a.session_name, a.audit_date, o.organization_name FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE o.user_id = ? ORDER BY a.audit_date DESC, a.created_at DESC");
+$stmtAuditList->execute([$userId]);
+$allAudits = $stmtAuditList->fetchAll(PDO::FETCH_ASSOC);
+
+if ($audit_id > 0) {
+    $stmt = $pdo->prepare("SELECT a.id, a.organization_id FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ? AND o.user_id = ?");
+    $stmt->execute([$audit_id, $userId]);
+    $auditAccess = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$auditAccess) {
+        $pageError = 'Audit not found or access denied.';
+        $audit_id = 0;
+        unset($_SESSION['active_audit_id']);
+    } else {
+        $selectedOrgId = intval($auditAccess['organization_id']);
+        $_SESSION['active_audit_id'] = $audit_id;
+
+        $stmt = $pdo->prepare("SELECT * FROM assets WHERE audit_id = ?");
+        $stmt->execute([$audit_id]);
+        $assets = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
-} else {
-    header('Location: audit_sessions.php?error=no_audit_selected');
-    exit();
 }
-
-// Get assets for this audit
-$stmt = $pdo->prepare("SELECT * FROM assets WHERE audit_id = ? ORDER BY criticality_score DESC, created_at DESC");
-$stmt->execute([$auditId]);
-$assets = $stmt->fetchAll();
-
-// Calculate average criticality
-$avgCriticality = 0;
-if (count($assets) > 0) {
-    $totalCriticality = array_sum(array_column($assets, 'criticality_score'));
-    $avgCriticality = $totalCriticality / count($assets);
-}
-
-include 'includes/header.php';
 ?>
 
-<div class="container-fluid">
-    <div class="row">
-        <?php include 'includes/sidebar.php'; ?>
-        
-        <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
-            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                <div>
-                    <h1 class="h2"><i class="fas fa-server"></i> Asset Management</h1>
-                    <p class="text-muted">
-                        <i class="fas fa-building"></i> <?php echo htmlspecialchars($audit['organization_name']); ?> 
-                        | <i class="fas fa-calendar"></i> <?php echo htmlspecialchars($audit['session_name'] ?? 'Audit Session'); ?>
-                    </p>
-                </div>
-                <div class="btn-toolbar mb-2 mb-md-0">
-                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAssetModal">
-                        <i class="fas fa-plus"></i> Add Asset
-                    </button>
-                    <a href="audit_sessions.php" class="btn btn-outline-secondary ms-2">
-                        <i class="fas fa-arrow-left"></i> Back
-                    </a>
-                </div>
-            </div>
+<?php include 'includes/header.php'; ?>
+<?php include 'includes/sidebar.php'; ?>
 
-            <!-- Statistics Cards -->
-            <div class="row mb-4">
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-body">
-                            <h6 class="text-muted">Total Assets</h6>
-                            <h3><i class="fas fa-server text-primary"></i> <?php echo count($assets); ?></h3>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-body">
-                            <h6 class="text-muted">Average Criticality</h6>
-                            <h3>
-                                <i class="fas fa-shield-alt text-warning"></i> 
-                                <?php echo number_format($avgCriticality, 2); ?>/5
-                            </h3>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-body">
-                            <h6 class="text-muted">Critical Assets</h6>
-                            <h3>
-                                <i class="fas fa-exclamation-triangle text-danger"></i> 
-                                <?php 
-                                $criticalCount = count(array_filter($assets, function($a) { 
-                                    return $a['criticality_level'] == 'Critical'; 
-                                }));
-                                echo $criticalCount;
-                                ?>
-                            </h3>
-                        </div>
-                    </div>
-                </div>
-            </div>
+<div class="container mt-4">
 
-            <!-- Assets Table -->
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-list"></i> Asset Inventory</h5>
+    <h2 class="mb-4">Asset Management</h2>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="mb-3">Pilih Organization & Audit Session</h5>
+            <form id="assetAuditSwitcher" class="row g-2">
+                <div class="col-md-5">
+                    <select id="orgSelect" class="form-select">
+                        <option value="">Semua Organization</option>
+                        <?php foreach ($organizations as $org): ?>
+                            <option value="<?= intval($org['id']) ?>" <?= $selectedOrgId === intval($org['id']) ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($org['organization_name']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
-                <div class="card-body">
-                    <?php if (count($assets) > 0): ?>
-                        <div class="table-responsive">
-                            <table class="table table-striped table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>Asset Name</th>
-                                        <th>Type</th>
-                                        <th>IP/URL</th>
-                                        <th>C</th>
-                                        <th>I</th>
-                                        <th>A</th>
-                                        <th>Criticality</th>
-                                        <th>Level</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($assets as $asset): ?>
-                                        <tr>
-                                            <td>
-                                                <strong><?php echo htmlspecialchars($asset['asset_name']); ?></strong>
-                                                <?php if ($asset['description']): ?>
-                                                    <br><small class="text-muted"><?php echo htmlspecialchars(substr($asset['description'], 0, 50)); ?></small>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td><?php echo htmlspecialchars($asset['asset_type']); ?></td>
-                                            <td><code><?php echo htmlspecialchars($asset['ip_address']); ?></code></td>
-                                            <td>
-                                                <span class="badge bg-info"><?php echo $asset['confidentiality']; ?></span>
-                                            </td>
-                                            <td>
-                                                <span class="badge bg-info"><?php echo $asset['integrity']; ?></span>
-                                            </td>
-                                            <td>
-                                                <span class="badge bg-info"><?php echo $asset['availability']; ?></span>
-                                            </td>
-                                            <td><?php echo number_format($asset['criticality_score'], 2); ?></td>
-                                            <td>
-                                                <?php
-                                                $levelClass = 'secondary';
-                                                switch($asset['criticality_level']) {
-                                                    case 'Critical': $levelClass = 'danger'; break;
-                                                    case 'High': $levelClass = 'warning'; break;
-                                                    case 'Medium': $levelClass = 'info'; break;
-                                                    case 'Low': $levelClass = 'success'; break;
-                                                }
-                                                ?>
-                                                <span class="badge bg-<?php echo $levelClass; ?>">
-                                                    <?php echo htmlspecialchars($asset['criticality_level']); ?>
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <button class="btn btn-sm btn-info" onclick="viewAsset(<?php echo $asset['id']; ?>)">
-                                                    <i class="fas fa-eye"></i>
-                                                </button>
-                                                <button class="btn btn-sm btn-danger" onclick="deleteAsset(<?php echo $asset['id']; ?>)">
-                                                    <i class="fas fa-trash"></i>
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php else: ?>
-                        <div class="alert alert-info">
-                            <i class="fas fa-info-circle"></i> No assets registered yet. Click "Add Asset" to begin.
-                        </div>
-                    <?php endif; ?>
+                <div class="col-md-5">
+                    <select id="auditSelect" class="form-select">
+                        <option value="">Pilih Audit Session</option>
+                        <?php foreach ($allAudits as $auditItem): ?>
+                            <option value="<?= intval($auditItem['id']) ?>"
+                                    data-org-id="<?= intval($auditItem['organization_id']) ?>"
+                                    <?= $audit_id === intval($auditItem['id']) ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($auditItem['organization_name'] . ' - ' . $auditItem['session_name'] . ' (' . $auditItem['audit_date'] . ')') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
-            </div>
-        </main>
-    </div>
-</div>
-
-<!-- Add Asset Modal -->
-<div class="modal fade" id="addAssetModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="fas fa-plus"></i> Add New Asset</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <form id="addAssetForm">
-                <div class="modal-body">
-                    <input type="hidden" name="audit_id" value="<?php echo $auditId; ?>">
-                    
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Asset Name *</label>
-                            <input type="text" name="asset_name" class="form-control" required>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Asset Type *</label>
-                            <select name="asset_type" class="form-select" required>
-                                <option value="">Select Type</option>
-                                <option value="Server">Server</option>
-                                <option value="Workstation">Workstation</option>
-                                <option value="Database">Database</option>
-                                <option value="Web Application">Web Application</option>
-                                <option value="Mobile Application">Mobile Application</option>
-                                <option value="Network Device">Network Device</option>
-                                <option value="IoT Device">IoT Device</option>
-                                <option value="Cloud Service">Cloud Service</option>
-                                <option value="Other">Other</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">IP Address / URL</label>
-                        <input type="text" name="ip_address" class="form-control" placeholder="e.g., 192.168.1.100 or https://example.com">
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Description</label>
-                        <textarea name="description" class="form-control" rows="2"></textarea>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Owner / Responsible Person</label>
-                            <input type="text" name="owner" class="form-control">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Department</label>
-                            <input type="text" name="department" class="form-control">
-                        </div>
-                    </div>
-
-                    <hr>
-                    <h6 class="mb-3"><i class="fas fa-shield-alt"></i> CIA Triad Rating (1-5)</h6>
-                    
-                    <div class="row">
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Confidentiality *</label>
-                            <input type="number" name="confidentiality" class="form-control" min="1" max="5" required>
-                            <small class="text-muted">1=Low, 5=Critical</small>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Integrity *</label>
-                            <input type="number" name="integrity" class="form-control" min="1" max="5" required>
-                            <small class="text-muted">1=Low, 5=Critical</small>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <label class="form-label">Availability *</label>
-                            <input type="number" name="availability" class="form-control" min="1" max="5" required>
-                            <small class="text-muted">1=Low, 5=Critical</small>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-save"></i> Add Asset
-                    </button>
+                <div class="col-md-2 d-grid">
+                    <button class="btn btn-primary" type="submit">Buka</button>
                 </div>
             </form>
         </div>
     </div>
+
+    <?php if (!empty($pageError)): ?>
+        <div class="alert alert-danger"><?= htmlspecialchars($pageError) ?></div>
+    <?php endif; ?>
+
+    <?php if (!$audit_id): ?>
+        <div class="alert alert-warning">Pilih audit session dulu untuk mengelola assets.</div>
+    <?php else: ?>
+
+    <!-- Add Asset Form -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+
+            <form id="assetForm">
+
+                <input type="hidden" name="audit_id" value="<?= $audit_id ?>">
+                <?= csrfTokenInput(); ?>
+
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label>Asset Name</label>
+                        <input type="text" name="asset_name" class="form-control" required>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>IP Address</label>
+                        <input type="text" name="ip_address" class="form-control">
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Asset Type</label>
+                        <input type="text" name="asset_type" class="form-control">
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label>Confidentiality (1-5)</label>
+                        <input type="number" min="1" max="5" name="confidentiality" class="form-control" required>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Integrity (1-5)</label>
+                        <input type="number" min="1" max="5" name="integrity" class="form-control" required>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Availability (1-5)</label>
+                        <input type="number" min="1" max="5" name="availability" class="form-control" required>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    Add Asset
+                </button>
+
+            </form>
+
+        </div>
+    </div>
+
+    <!-- Asset Table -->
+    <table class="table table-bordered">
+        <thead class="table-dark">
+            <tr>
+                <th>Asset</th>
+                <th>IP</th>
+                <th>Type</th>
+                <th>CIA</th>
+                <th>Criticality Score</th>
+                <th>Level</th>
+            </tr>
+        </thead>
+        <tbody>
+        <?php if (count($assets) > 0): ?>
+            <?php foreach ($assets as $asset): ?>
+                <tr>
+                    <td><?= htmlspecialchars($asset['asset_name']) ?></td>
+                    <td><?= htmlspecialchars($asset['ip_address']) ?></td>
+                    <td><?= htmlspecialchars($asset['asset_type']) ?></td>
+                    <td>
+                        <?= $asset['confidentiality'] ?>/<?= $asset['integrity'] ?>/<?= $asset['availability'] ?>
+                    </td>
+                    <td><?= $asset['criticality_score'] ?></td>
+                    <td>
+                        <span class="badge bg-info">
+                            <?= $asset['criticality_level'] ?>
+                        </span>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+        <?php else: ?>
+            <tr>
+                <td colspan="6" class="text-center">No assets yet</td>
+            </tr>
+        <?php endif; ?>
+        </tbody>
+    </table>
+
+    <a href="findings.php?audit_id=<?= $audit_id ?>" class="btn btn-outline-danger">
+        Go to Findings
+    </a>
+
+    <?php endif; ?>
+
 </div>
 
 <script>
-// Handle form submission
-document.getElementById('addAssetForm').addEventListener('submit', function(e) {
+const orgSelect = document.getElementById('orgSelect');
+const auditSelect = document.getElementById('auditSelect');
+
+function filterAuditsByOrg() {
+    const orgId = orgSelect.value;
+
+    Array.from(auditSelect.options).forEach((opt, index) => {
+        if (index === 0) {
+            opt.hidden = false;
+            return;
+        }
+        const optionOrgId = opt.dataset.orgId || '';
+        opt.hidden = orgId !== '' && optionOrgId !== orgId;
+    });
+
+    if (auditSelect.selectedOptions.length && auditSelect.selectedOptions[0].hidden) {
+        auditSelect.value = '';
+    }
+}
+
+orgSelect.addEventListener('change', filterAuditsByOrg);
+filterAuditsByOrg();
+
+document.getElementById('assetAuditSwitcher').addEventListener('submit', function(e) {
     e.preventDefault();
-    
+    const selectedAuditId = auditSelect.value;
+    const selectedOrgId = orgSelect.value;
+
+    if (selectedAuditId) {
+        window.location.href = 'asset_manage.php?audit_id=' + encodeURIComponent(selectedAuditId);
+        return;
+    }
+
+    if (selectedOrgId) {
+        window.location.href = 'asset_manage.php?org_id=' + encodeURIComponent(selectedOrgId);
+    }
+});
+
+<?php if ($audit_id): ?>
+document.getElementById('assetForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
     const formData = new FormData(this);
-    
+
     fetch('api/asset_actions.php?action=add', {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
+    .then(res => res.json())
     .then(data => {
         if (data.success) {
             location.reload();
         } else {
-            alert('Error: ' + data.message);
+            alert(data.message);
         }
     })
-    .catch(error => {
-        alert('Error: ' + error);
-    });
+    .catch(() => alert("Error adding asset"));
 });
-
-function deleteAsset(id) {
-    if (confirm('Are you sure you want to delete this asset?')) {
-        fetch('api/asset_actions.php?action=delete', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({id: id})
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                location.reload();
-            } else {
-                alert('Error: ' + data.message);
-            }
-        });
-    }
-}
-
-function viewAsset(id) {
-    // Implement view functionality
-    alert('View asset details (to be implemented)');
-}
+<?php endif; ?>
 </script>
 
 <?php include 'includes/footer.php'; ?>

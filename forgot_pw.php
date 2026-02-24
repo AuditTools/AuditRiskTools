@@ -5,6 +5,7 @@
  */
 session_start();
 require_once 'functions/db.php';
+require_once 'functions/auth.php';
 
 // If already logged in, redirect to dashboard
 if (isset($_SESSION['user_id'])) {
@@ -35,7 +36,9 @@ if (isset($_GET['token']) && !empty($_GET['token'])) {
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    if (isset($_POST['action'])) {
+    if (!isValidCSRFRequest()) {
+        $error = 'Invalid request token. Please refresh and try again.';
+    } elseif (isset($_POST['action'])) {
         if ($_POST['action'] == 'request_reset') {
             // Step 1: Request password reset
             $email = filter_var(trim($_POST['email']), FILTER_VALIDATE_EMAIL);
@@ -63,7 +66,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     
                     // In production, send email here
                     // For now, display the link (development only)
-                    $resetLink = "http://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']) . "/forgot_pw.php?token=" . $resetToken;
+                    $safeHost = preg_replace('/[^a-zA-Z0-9.\-]/', '', $_SERVER['HTTP_HOST'] ?? 'localhost');
+                    $basePath = rtrim(dirname($_SERVER['PHP_SELF']), '/\\');
+                    $resetLink = "http://" . $safeHost . $basePath . "/forgot_pw.php?token=" . urlencode($resetToken);
                     
                     $success = "Password reset link has been generated. <br><br>
                                <strong>Reset Link:</strong><br>
@@ -164,6 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     <!-- Step 1: Request Reset -->
                     <p class="text-muted mb-4">Enter your email address and we'll send you a link to reset your password.</p>
                     <form method="POST" action="">
+                        <?= csrfTokenInput(); ?>
                         <input type="hidden" name="action" value="request_reset">
                         <div class="mb-3">
                             <label class="form-label">Email Address</label>
@@ -181,6 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     <!-- Step 2: Reset Password -->
                     <p class="text-muted mb-4">Enter your new password below.</p>
                     <form method="POST" action="">
+                        <?= csrfTokenInput(); ?>
                         <input type="hidden" name="action" value="reset_password">
                         <input type="hidden" name="token" value="<?php echo htmlspecialchars($token); ?>">
                         
