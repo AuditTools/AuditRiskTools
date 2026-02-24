@@ -1,0 +1,396 @@
+{
+	"info": {
+		"name": "SRM-Audit API",
+		"description": "Complete API collection for SRM-Audit System\n\nBase URL: http://localhost/AuditRiskTools",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "AI - Test Connection",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost/AuditRiskTools/api/ai_actions.php?action=test",
+					"protocol": "http",
+					"host": ["localhost"],
+					"path": ["AuditRiskTools", "api", "ai_actions.php"],
+					"query": [
+						{
+							"key": "action",
+							"value": "test"
+						}
+					]
+				},
+				"description": "Test AI connection (Gemini/OpenAI/Ollama)"
+			},
+			"response": []
+		},
+		{
+			"name": "AI - Chatbot Question",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded"
+					}
+				],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "question",
+							"value": "What is the CIA triad?",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost/AuditRiskTools/api/ai_actions.php?action=chatbot",
+					"protocol": "http",
+					"host": ["localhost"],
+					"path": ["AuditRiskTools", "api", "ai_actions.php"],
+					"query": [
+						{
+							"key": "action",
+							"value": "chatbot"
+						}
+					]
+				},
+				"description": "Ask AI chatbot about GRC concepts"
+			},
+			"response": []
+		},
+		{
+			"name": "Auth - Register",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded"
+					}
+				],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "name",
+							"value": "Test User",
+							"type": "text"
+						},
+						{
+							"key": "email",
+							"value": "test@example.com",
+							"type": "text"
+						},
+						{
+							"key": "password",
+							"value": "password123",
+							"type": "text"
+						},
+						{
+							"key": "confirm_password",
+							"value": "password123",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost/AuditRiskTools/api/auth_actions.php?action=register",
+					"protocol": "http",
+					"host": ["localhost"],
+					"path": ["AuditRiskTools", "api", "auth_actions.php"],
+					"query": [
+						{
+							"key": "action",
+							"value": "register"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Auth - Login",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded"
+					}
+				],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "email",
+							"value": "test@example.com",
+							"type": "text"
+						},
+						{
+							"key": "password",
+							"value": "password123",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost/AuditRiskTools/api/auth_actions.php?action=login",
+					"protocol": "http",
+					"host": ["localhost"],
+					"path": ["AuditRiskTools", "api", "auth_actions.php"],
+					"query": [
+						{
+							"key": "action",
+							"value": "login"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Organization - Add",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded"
+					}
+				],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "organization_name",
+							"value": "Test Company Ltd",
+							"type": "text"
+						},
+						{
+							"key": "industry",
+							"value": "Technology",
+							"type": "text"
+						},
+						{
+							"key": "contact_person",
+							"value": "John Doe",
+							"type": "text"
+						},
+						{
+							"key": "contact_email",
+							"value": "john@testcompany.com",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost/AuditRiskTools/api/organization_actions.php?action=add",
+					"protocol": "http",
+					"host": ["localhost"],
+					"path": ["AuditRiskTools", "api", "organization_actions.php"],
+					"query": [
+						{
+							"key": "action",
+							"value": "add"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Organization - List",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost/AuditRiskTools/api/organization_actions.php?action=list",
+					"protocol": "http",
+					"host": ["localhost"],
+					"path": ["AuditRiskTools", "api", "organization_actions.php"],
+					"query": [
+						{
+							"key": "action",
+							"value": "list"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Audit - Create Session",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded"
+					}
+				],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "organization_id",
+							"value": "1",
+							"type": "text"
+						},
+						{
+							"key": "session_name",
+							"value": "Q1 2026 Audit",
+							"type": "text"
+						},
+						{
+							"key": "digital_scale",
+							"value": "High",
+							"type": "text"
+						},
+						{
+							"key": "audit_date",
+							"value": "2026-02-24",
+							"type": "text"
+						},
+						{
+							"key": "notes",
+							"value": "First quarter security assessment",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost/AuditRiskTools/api/audit_actions.php?action=create",
+					"protocol": "http",
+					"host": ["localhost"],
+					"path": ["AuditRiskTools", "api", "audit_actions.php"],
+					"query": [
+						{
+							"key": "action",
+							"value": "create"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Audit - Get Session",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost/AuditRiskTools/api/audit_actions.php?action=get&id=1",
+					"protocol": "http",
+					"host": ["localhost"],
+					"path": ["AuditRiskTools", "api", "audit_actions.php"],
+					"query": [
+						{
+							"key": "action",
+							"value": "get"
+						},
+						{
+							"key": "id",
+							"value": "1"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Audit - List by Organization",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost/AuditRiskTools/api/audit_actions.php?action=list&organization_id=1",
+					"protocol": "http",
+					"host": ["localhost"],
+					"path": ["AuditRiskTools", "api", "audit_actions.php"],
+					"query": [
+						{
+							"key": "action",
+							"value": "list"
+						},
+						{
+							"key": "organization_id",
+							"value": "1"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "AI - Generate Report",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/x-www-form-urlencoded"
+					}
+				],
+				"body": {
+					"mode": "urlencoded",
+					"urlencoded": [
+						{
+							"key": "audit_id",
+							"value": "1",
+							"type": "text",
+							"description": "Audit session ID"
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost/AuditRiskTools/api/ai_actions.php?action=generate_report",
+					"protocol": "http",
+					"host": ["localhost"],
+					"path": ["AuditRiskTools", "api", "ai_actions.php"],
+					"query": [
+						{
+							"key": "action",
+							"value": "generate_report"
+						}
+					]
+				},
+				"description": "Generate AI audit report for completed audit"
+			},
+			"response": []
+		},
+		{
+			"name": "Test - Simple AI",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost/AuditRiskTools/test_ai_simple.php",
+					"protocol": "http",
+					"host": ["localhost"],
+					"path": ["AuditRiskTools", "test_ai_simple.php"]
+				},
+				"description": "Simple AI connection test without authentication"
+			},
+			"response": []
+		},
+		{
+			"name": "Test - Config Info",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost/AuditRiskTools/test_config_api.php",
+					"protocol": "http",
+					"host": ["localhost"],
+					"path": ["AuditRiskTools", "test_config_api.php"]
+				},
+				"description": "Check current .env configuration"
+			},
+			"response": []
+		}
+	]
+}

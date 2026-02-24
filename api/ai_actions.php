@@ -1,23 +1,46 @@
 <?php
 /**
- * SRM-Audit - AI Actions API
+ * SRM-Audit - AI Actions API (Using .env configuration)
  * Handle AI report generation and chatbot interactions
  */
+
+// Suppress errors for clean JSON output
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+
+header('Content-Type: application/json');
+
+// Check action first
+$action = $_GET['action'] ?? '';
+
+// Test endpoint doesn't need authentication or database
+if ($action === 'test') {
+    try {
+        require_once '../functions/ai_api.php';
+        $result = testAIConnection();
+        echo json_encode($result);
+    } catch (Exception $e) {
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage()
+        ]);
+    }
+    exit();
+}
+
+// All other actions require authentication
 session_start();
 require_once '../functions/db.php';
 require_once '../functions/auth.php';
 require_once '../functions/ai_api.php';
 
-header('Content-Type: application/json');
-
-// Check authentication
 if (!isLoggedIn()) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']);
     exit();
 }
 
 $userId = $_SESSION['user_id'];
-$action = $_GET['action'] ?? '';
 
 try {
     switch ($action) {
@@ -43,22 +66,12 @@ try {
             $stmt = $pdo->prepare("
                 SELECT title, description, likelihood, impact, risk_score, nist_function
                 FROM findings 
-                WHERE audit_session_id = ? 
+                WHERE audit_id = ? 
                 ORDER BY risk_score DESC 
                 LIMIT 5
             ");
             $stmt->execute([$auditId]);
             $findings = $stmt->fetchAll();
-            
-            // Format top 5 risks
-            $top5Text = "";
-            foreach ($findings as $index => $finding) {
-                $num = $index + 1;
-                $top5Text .= "{$num}. {$finding['title']}\n";
-                $top5Text .= "   Risk Score: {$finding['risk_score']} (L:{$finding['likelihood']} × I:{$finding['impact']})\n";
-                $top5Text .= "   NIST Function: {$finding['nist_function']}\n";
-                $top5Text .= "   Description: {$finding['description']}\n\n";
-            }
             
             // Prepare audit data for AI
             $auditData = [
@@ -67,25 +80,25 @@ try {
                 'exposure_level' => $audit['exposure_level'] ?? 'Unknown',
                 'final_risk_level' => $audit['final_risk_level'] ?? 'Unknown',
                 'compliance_percentage' => $audit['compliance_percentage'] ?? 0,
-                'top_5_risks' => $top5Text
+                'top_5_risks' => $findings
             ];
             
             // Generate report via AI
             $result = generateAuditReport($auditData);
             
             if (!$result['success']) {
-                throw new Exception($result['message']);
+                throw new Exception($result['error']);
             }
             
-            $reportContent = $result['data']['response'];
-            $tokensUsed = $result['data']['tokens_used'];
+            $reportContent = $result['report'];
+            $aiProvider = $result['provider'];
             
             // Save generated report to database
             $stmt = $pdo->prepare("
-                INSERT INTO ai_reports (audit_session_id, report_type, report_content, tokens_used, model_used) 
-                VALUES (?, 'executive_summary', ?, ?, ?)
+                INSERT INTO ai_reports (audit_session_id, report_type, report_content, model_used) 
+                VALUES (?, 'executive_summary', ?, ?)
             ");
-            $stmt->execute([$auditId, $reportContent, $tokensUsed, OPENAI_MODEL]);
+            $stmt->execute([$auditId, $reportContent, $aiProvider]);
             
             $reportId = $pdo->lastInsertId();
             
@@ -100,7 +113,7 @@ try {
                 'message' => 'Report generated successfully',
                 'report_id' => $reportId,
                 'report_content' => $reportContent,
-                'tokens_used' => $tokensUsed
+                'ai_provider' => $aiProvider
             ]);
             break;
             
@@ -118,35 +131,41 @@ try {
             }
             
             // Process via AI
-            $result = processChatbotQuestion($question);
+            $result = chatbotGuidance($question);
             
             if (!$result['success']) {
-                throw new Exception($result['message']);
+                throw new Exception($result['error']);
             }
             
-            $answer = $result['data']['response'];
-            $tokensUsed = $result['data']['tokens_used'];
+            $answer = $result['answer'];
             
             // Optional: Save chat history
-            $stmt = $pdo->prepare("
-                INSERT INTO chatbot_history (user_id, question, answer, tokens_used, model_used) 
-                VALUES (?, ?, ?, ?, ?)
-            ");
-            $stmt->execute([$userId, $question, $answer, $tokensUsed, OPENAI_MODEL]);
+            if ($userId) {
+                try {
+                    $stmt = $pdo->prepare("
+                        INSERT INTO chatbot_history (user_id, question, answer, model_used) 
+                        VALUES (?, ?, ?, ?)
+                    ");
+                    $stmt->execute([$userId, $question, $answer, AI_PROVIDER]);
+                } catch (Exception $e) {
+                    // Log but don't fail
+                    error_log("Failed to save chat history: " . $e->getMessage());
+                }
+            }
             
             echo json_encode([
                 'success' => true,
                 'answer' => $answer,
-                'tokens_used' => $tokensUsed
+                'provider' => AI_PROVIDER
             ]);
             break;
             
         case 'get_report':
             // Get saved AI report
-            $reportId = intval($_GET['report_id']);
+            $reportId = intval($_GET['id']);
             
             $stmt = $pdo->prepare("
-                SELECT r.*, a.organization_id, o.user_id
+                SELECT r.*, a.id as audit_id
                 FROM ai_reports r
                 JOIN audit_sessions a ON r.audit_session_id = a.id
                 JOIN organizations o ON a.organization_id = o.id
@@ -163,44 +182,19 @@ try {
             break;
             
         case 'list_reports':
-            // List all reports for an audit session
-            $auditId = intval($_GET['audit_id']);
-            
-            // Verify ownership
+            // List all reports for user
             $stmt = $pdo->prepare("
-                SELECT a.id
-                FROM audit_sessions a 
-                JOIN organizations o ON a.organization_id = o.id 
-                WHERE a.id = ? AND o.user_id = ?
+                SELECT r.*, a.session_name, o.organization_name
+                FROM ai_reports r
+                JOIN audit_sessions a ON r.audit_session_id = a.id
+                JOIN organizations o ON a.organization_id = o.id
+                WHERE o.user_id = ?
+                ORDER BY r.created_at DESC
             ");
-            $stmt->execute([$auditId, $userId]);
-            
-            if (!$stmt->fetch()) {
-                throw new Exception('Audit session not found or access denied');
-            }
-            
-            // Get reports
-            $stmt = $pdo->prepare("
-                SELECT id, report_type, created_at, tokens_used, model_used
-                FROM ai_reports 
-                WHERE audit_session_id = ? 
-                ORDER BY created_at DESC
-            ");
-            $stmt->execute([$auditId]);
+            $stmt->execute([$userId]);
             $reports = $stmt->fetchAll();
             
             echo json_encode(['success' => true, 'data' => $reports]);
-            break;
-            
-        case 'test':
-            // Test AI API connection
-            $testResult = callOpenAI(
-                "You are a test assistant.",
-                "Respond with: 'API connection successful'",
-                50
-            );
-            
-            echo json_encode($testResult);
             break;
             
         default:
@@ -228,3 +222,4 @@ function logAction($pdo, $userId, $action, $table, $recordId) {
     }
 }
 ?>
+

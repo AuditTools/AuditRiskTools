@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>✅ Setup Test - SRM Audit</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body { background: #f5f7fa; padding: 30px 0; }
+        .test-card { margin-bottom: 20px; }
+        .status-pending { color: #6c757d; }
+        .status-success { color: #28a745; }
+        .status-error { color: #dc3545; }
+        .test-result { 
+            background: #f8f9fa; 
+            padding: 15px; 
+            border-radius: 5px; 
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        .config-info { 
+            background: #e7f3ff; 
+            padding: 15px; 
+            border-radius: 5px;
+            border-left: 4px solid #0d6efd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-10 mx-auto">
+                <div class="card shadow">
+                    <div class="card-header bg-primary text-white">
+                        <h3 class="mb-0">
+                            <i class="bi bi-check2-circle"></i> 
+                            SRM-Audit Setup Test
+                        </h3>
+                        <small>Testing .env configuration and API connections</small>
+                    </div>
+                    <div class="card-body">
+                        
+                        <!-- Current Configuration -->
+                        <div class="config-info mb-4">
+                            <h5><i class="bi bi-gear"></i> Current Configuration (.env)</h5>
+                            <div id="configInfo">Loading...</div>
+                        </div>
+
+                        <!-- Test 1: Database Connection -->
+                        <div class="card test-card">
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    <span id="db-status" class="status-pending">●</span>
+                                    1. Database Connection
+                                </h5>
+                                <p class="card-text text-muted">Testing MySQL connection via PDO</p>
+                                <button class="btn btn-sm btn-primary" onclick="testDatabase()">
+                                    <i class="bi bi-play-fill"></i> Test Database
+                                </button>
+                                <div id="db-result" class="test-result" style="display:none;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Test 2: AI Connection -->
+                        <div class="card test-card">
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    <span id="ai-status" class="status-pending">●</span>
+                                    2. AI API Connection
+                                </h5>
+                                <p class="card-text text-muted">Testing AI provider (Gemini/OpenAI/Ollama)</p>
+                                <button class="btn btn-sm btn-success" onclick="testAI()">
+                                    <i class="bi bi-play-fill"></i> Test AI Connection
+                                </button>
+                                <div id="ai-result" class="test-result" style="display:none;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Test 3: Chatbot -->
+                        <div class="card test-card">
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    <span id="chat-status" class="status-pending">●</span>
+                                    3. AI Chatbot
+                                </h5>
+                                <p class="card-text text-muted">Testing educational chatbot functionality</p>
+                                <textarea class="form-control mb-2" id="testQuestion" rows="2" placeholder="Enter test question...">What is the CIA triad?</textarea>
+                                <button class="btn btn-sm btn-info text-white" onclick="testChatbot()">
+                                    <i class="bi bi-play-fill"></i> Test Chatbot
+                                </button>
+                                <div id="chat-result" class="test-result" style="display:none;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Run All Tests -->
+                        <div class="text-center mt-4">
+                            <button class="btn btn-lg btn-primary" onclick="runAllTests()">
+                                <i class="bi bi-lightning-fill"></i> Run All Tests
+                            </button>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Setup Instructions -->
+                <div class="card shadow mt-4">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="bi bi-info-circle"></i> Setup Instructions</h5>
+                    </div>
+                    <div class="card-body">
+                        <ol>
+                            <li><strong>Install Composer dependencies:</strong>
+                                <pre class="bg-dark text-white p-2 rounded">composer install</pre>
+                            </li>
+                            <li><strong>Configure .env file:</strong>
+                                <pre class="bg-dark text-white p-2 rounded">cp .env.example .env
+notepad .env</pre>
+                            </li>
+                            <li><strong>Set Gemini API key in .env:</strong>
+                                <pre class="bg-dark text-white p-2 rounded">GEMINI_API_KEY=AIzaSy_YOUR_ACTUAL_KEY</pre>
+                                Get key from: <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>
+                            </li>
+                            <li><strong>Start MySQL:</strong> Laragon → Start All</li>
+                            <li><strong>Import database:</strong> phpMyAdmin → Import → database_schema.sql</li>
+                            <li><strong>Run this test page</strong> to verify setup</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load current configuration
+        fetch('test_config_api.php')
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('configInfo').innerHTML = `
+                        <strong>Database:</strong> ${data.config.db_host}:${data.config.db_port} / ${data.config.db_name}<br>
+                        <strong>AI Provider:</strong> ${data.config.ai_provider.toUpperCase()}<br>
+                        <strong>Environment:</strong> ${data.config.app_env}<br>
+                        <strong>Debug Mode:</strong> ${data.config.app_debug ? 'ON' : 'OFF'}
+                    `;
+                }
+            })
+            .catch(e => {
+                document.getElementById('configInfo').innerHTML = '<span class="text-danger">Error loading config</span>';
+            });
+
+        async function testDatabase() {
+            const statusEl = document.getElementById('db-status');
+            const resultEl = document.getElementById('db-result');
+            
+            statusEl.className = 'status-pending';
+            resultEl.style.display = 'block';
+            resultEl.innerHTML = '⏳ Testing database connection...';
+            
+            try {
+                const response = await fetch('test_connection.php');
+                const text = await response.text();
+                
+                if (text.includes('successful') || text.includes('Connected')) {
+                    statusEl.className = 'status-success';
+                    resultEl.innerHTML = '✅ Database connection successful!';
+                    resultEl.style.background = '#d4edda';
+                } else {
+                    statusEl.className = 'status-error';
+                    resultEl.innerHTML = '❌ Database connection failed<br>' + text.substring(0, 200);
+                    resultEl.style.background = '#f8d7da';
+                }
+            } catch (error) {
+                statusEl.className = 'status-error';
+                resultEl.innerHTML = '❌ Error: ' + error.message;
+                resultEl.style.background = '#f8d7da';
+            }
+        }
+
+        async function testAI() {
+            const statusEl = document.getElementById('ai-status');
+            const resultEl = document.getElementById('ai-result');
+            
+            statusEl.className = 'status-pending';
+            resultEl.style.display = 'block';
+            resultEl.innerHTML = '⏳ Testing AI connection...';
+            
+            try {
+                const response = await fetch('api/ai_actions.php?action=test');
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusEl.className = 'status-success';
+                    resultEl.innerHTML = `✅ AI Connection Successful!<br>
+                        <strong>Provider:</strong> ${data.provider}<br>
+                        <strong>Response:</strong> ${data.response}`;
+                    resultEl.style.background = '#d4edda';
+                } else {
+                    statusEl.className = 'status-error';
+                    resultEl.innerHTML = '❌ AI Connection Failed<br>' + data.error;
+                    resultEl.style.background = '#f8d7da';
+                }
+            } catch (error) {
+                statusEl.className = 'status-error';
+                resultEl.innerHTML = '❌ Error: ' + error.message;
+                resultEl.style.background = '#f8d7da';
+            }
+        }
+
+        async function testChatbot() {
+            const statusEl = document.getElementById('chat-status');
+            const resultEl = document.getElementById('chat-result');
+            const question = document.getElementById('testQuestion').value;
+            
+            statusEl.className = 'status-pending';
+            resultEl.style.display = 'block';
+            resultEl.innerHTML = '⏳ Asking chatbot...';
+            
+            try {
+                const formData = new FormData();
+                formData.append('question', question);
+                
+                const response = await fetch('api/ai_actions.php?action=chatbot', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusEl.className = 'status-success';
+                    resultEl.innerHTML = `✅ Chatbot Working!<br>
+                        <strong>Q:</strong> ${question}<br>
+                        <strong>A:</strong> ${data.answer}`;
+                    resultEl.style.background = '#d4edda';
+                } else {
+                    statusEl.className = 'status-error';
+                    resultEl.innerHTML = '❌ Chatbot Failed<br>' + data.message;
+                    resultEl.style.background = '#f8d7da';
+                }
+            } catch (error) {
+                statusEl.className = 'status-error';
+                resultEl.innerHTML = '❌ Error: ' + error.message;
+                resultEl.style.background = '#f8d7da';
+            }
+        }
+
+        async function runAllTests() {
+            await testDatabase();
+            await new Promise(r => setTimeout(r, 1000));
+            await testAI();
+            await new Promise(r => setTimeout(r, 1000));
+            await testChatbot();
+        }
+    </script>
+</body>
+</html>

@@ -7,7 +7,7 @@
 -- ====================================================
 
 -- Create Database
-CREATE DATABASE IF NOT EXISTS srm_audit;
+CREATE DATABASE IF NOT EXISTS audit;
 USE srm_audit;
 
 -- ====================================================

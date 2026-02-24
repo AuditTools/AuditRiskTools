@@ -1,127 +1,122 @@
 <?php
 /**
- * SRM-Audit - AI API Integration
- * Handles communication with OpenAI API for report generation and chatbot
+ * SRM-Audit - AI Integration with Multi-Provider Support
+ * Supports: Gemini (free), OpenAI (paid), Ollama (local)
+ * Configuration via .env file
  */
 
-// ==============================================
-// AI CONFIGURATION
-// ==============================================
-
-// OpenAI API Configuration
-define('OPENAI_API_KEY', 'your-openai-api-key-here'); // Replace with your actual API key
-define('OPENAI_MODEL', 'gpt-4o-mini'); // Cost-effective and powerful
-define('OPENAI_API_URL', 'https://api.openai.com/v1/chat/completions');
-
-// Alternative: Use GPT-4o for higher quality (more expensive)
-// define('OPENAI_MODEL', 'gpt-4o');
+// Load configuration from .env
+require_once __DIR__ . '/../config/config.php';
 
 // ==============================================
-// RECOMMENDED AI MODELS FOR SRM-AUDIT
-// ==============================================
-/*
-1️⃣ BEST CHOICE: OpenAI GPT-4o-mini
-   - Cost: $0.15/1M input tokens, $0.60/1M output tokens
-   - Speed: Very fast
-   - Quality: Excellent for structured reports
-   - Perfect for: Report generation + Chatbot
-   
-2️⃣ PREMIUM: OpenAI GPT-4o
-   - Cost: $2.50/1M input tokens, $10/1M output tokens  
-   - Speed: Fast
-   - Quality: Highest reasoning ability
-   - Use for: Complex audit analysis
-   
-3️⃣ BUDGET: OpenAI GPT-3.5-turbo
-   - Cost: $0.50/1M input tokens, $1.50/1M output tokens
-   - Speed: Fastest
-   - Quality: Good for chatbot
-   - Use for: Chatbot only (not report generation)
-
-4️⃣ ALTERNATIVE: Anthropic Claude 3.5 Sonnet
-   - Via Anthropic API
-   - Excellent reasoning and formal writing
-   - Need to modify code for Claude API format
-*/
-
-// ==============================================
-// AI PROMPT TEMPLATES
+// MAIN AI ROUTER
 // ==============================================
 
 /**
- * Get Executive Summary Report Prompt
- * Used for generating formal audit reports
+ * Main AI API caller - routes to correct provider based on .env
  */
-function getReportPrompt($auditData) {
-    $prompt = "You are a professional Cybersecurity Auditor integrated into the SRM-Audit system.
-
-Based ONLY on the audit data below:
-
-Organization: {$auditData['organization_name']}
-Industry: {$auditData['industry']}
-Exposure Level: {$auditData['exposure_level']}
-Final Risk Level: {$auditData['final_risk_level']}
-Compliance Percentage: {$auditData['compliance_percentage']}%
-
-Top 5 Risks:
-{$auditData['top_5_risks']}
-
-Generate:
-1. Executive Summary (business focused)
-2. Organizational Risk Overview
-3. Strategic Recommendations
-
-Constraints:
-- Use formal corporate tone
-- Do not recalculate scores
-- Do not add new risks
-- Only use provided data
-- Maximum 400 words";
-
-    return $prompt;
-}
-
-/**
- * Get Chatbot Guidance Prompt
- * Used for educational Q&A about audit frameworks
- */
-function getChatbotSystemPrompt() {
-    return "You are an educational Cybersecurity GRC assistant.
-
-Rules:
-- Explain frameworks simply
-- Do not access database
-- Do not provide contextual decisions
-- Do not modify scores
-- Keep answer under 150 words";
+function callAI($prompt, $maxTokens = 1000) {
+    switch (AI_PROVIDER) {
+        case 'gemini':
+            return callGeminiAPI($prompt, $maxTokens);
+        case 'openai':
+            return callOpenAI($prompt, $maxTokens);
+        case 'ollama':
+            return callOllamaAPI($prompt, $maxTokens);
+        default:
+            throw new Exception("Invalid AI provider in .env: " . AI_PROVIDER);
+    }
 }
 
 // ==============================================
-// AI API FUNCTIONS
+// GEMINI API (FREE)
 // ==============================================
 
 /**
- * Call OpenAI Chat Completion API
- * 
- * @param string $systemPrompt System instructions
- * @param string $userMessage User input
- * @param int $maxTokens Maximum response tokens
- * @return array Response with 'success', 'message', 'data'
+ * Gemini API Integration (FREE)
+ * Get API key from: https://aistudio.google.com/app/apikey
  */
-function callOpenAI($systemPrompt, $userMessage, $maxTokens = 500) {
-    // Check if API key is configured
-    if (OPENAI_API_KEY === 'your-openai-api-key-here') {
-        return [
-            'success' => false,
-            'message' => 'OpenAI API key not configured. Please set OPENAI_API_KEY in functions/ai_api.php'
-        ];
+function callGeminiAPI($prompt, $maxTokens = 1000) {
+    if (empty(GEMINI_API_KEY)) {
+        throw new Exception("Gemini API key not configured. Add GEMINI_API_KEY to .env file");
+    }
+    
+    $data = [
+        'contents' => [
+            [
+                'parts' => [
+                    ['text' => $prompt]
+                ]
+            ]
+        ],
+        'generationConfig' => [
+            'temperature' => 0.7,
+            'maxOutputTokens' => $maxTokens,
+            'topP' => 0.8,
+            'topK' => 40
+        ],
+        'safetySettings' => [
+            [
+                'category' => 'HARM_CATEGORY_HARASSMENT',
+                'threshold' => 'BLOCK_NONE'
+            ],
+            [
+                'category' => 'HARM_CATEGORY_HATE_SPEECH',
+                'threshold' => 'BLOCK_NONE'
+            ]
+        ]
+    ];
+    
+    $url = GEMINI_API_URL . '?key=' . GEMINI_API_KEY;
+    
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+    
+    if ($error) {
+        throw new Exception("CURL Error: $error");
+    }
+    
+    if ($httpCode !== 200) {
+        $errorData = json_decode($response, true);
+        $errorMsg = $errorData['error']['message'] ?? "HTTP Error $httpCode";
+        throw new Exception("Gemini API Error: $errorMsg");
+    }
+    
+    $result = json_decode($response, true);
+    
+    if (isset($result['candidates'][0]['content']['parts'][0]['text'])) {
+        return $result['candidates'][0]['content']['parts'][0]['text'];
+    }
+    
+    throw new Exception("Unexpected Gemini API response format");
+}
+
+// ==============================================
+// OPENAI API (PAID)
+// ==============================================
+
+/**
+ * OpenAI API Integration
+ * Get API key from: https://platform.openai.com/api-keys
+ */
+function callOpenAI($prompt, $maxTokens = 1000) {
+    if (empty(OPENAI_API_KEY)) {
+        throw new Exception("OpenAI API key not configured. Add OPENAI_API_KEY to .env file");
     }
     
     $data = [
         'model' => OPENAI_MODEL,
         'messages' => [
-            ['role' => 'system', 'content' => $systemPrompt],
-            ['role' => 'user', 'content' => $userMessage]
+            ['role' => 'user', 'content' => $prompt]
         ],
         'max_tokens' => $maxTokens,
         'temperature' => 0.7
@@ -135,6 +130,7 @@ function callOpenAI($systemPrompt, $userMessage, $maxTokens = 500) {
         'Content-Type: application/json',
         'Authorization: Bearer ' . OPENAI_API_KEY
     ]);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
     
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -142,101 +138,318 @@ function callOpenAI($systemPrompt, $userMessage, $maxTokens = 500) {
     curl_close($ch);
     
     if ($error) {
-        return [
-            'success' => false,
-            'message' => 'API request failed: ' . $error
-        ];
+        throw new Exception("CURL Error: $error");
     }
     
     if ($httpCode !== 200) {
         $errorData = json_decode($response, true);
-        return [
-            'success' => false,
-            'message' => 'API error: ' . ($errorData['error']['message'] ?? 'Unknown error')
-        ];
+        $errorMsg = $errorData['error']['message'] ?? "HTTP Error $httpCode";
+        throw new Exception("OpenAI API Error: $errorMsg");
     }
     
     $result = json_decode($response, true);
     
-    if (!isset($result['choices'][0]['message']['content'])) {
-        return [
-            'success' => false,
-            'message' => 'Invalid API response format'
-        ];
+    if (isset($result['choices'][0]['message']['content'])) {
+        return $result['choices'][0]['message']['content'];
     }
     
-    return [
-        'success' => true,
-        'data' => [
-            'response' => trim($result['choices'][0]['message']['content']),
-            'tokens_used' => $result['usage']['total_tokens'] ?? 0
+    throw new Exception("Unexpected OpenAI API response format");
+}
+
+// ==============================================
+// OLLAMA API (LOCAL, FREE)
+// ==============================================
+
+/**
+ * Ollama API Integration (Local AI)
+ * Install from: https://ollama.com
+ */
+function callOllamaAPI($prompt, $maxTokens = 1000) {
+    $data = [
+        'model' => OLLAMA_MODEL,
+        'prompt' => $prompt,
+        'stream' => false,
+        'options' => [
+            'temperature' => 0.7,
+            'num_predict' => $maxTokens
         ]
     ];
+    
+    $ch = curl_init(OLLAMA_API_URL);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 60);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+    
+    if ($error) {
+        throw new Exception("CURL Error: $error. Is Ollama running? Start with: ollama serve");
+    }
+    
+    if ($httpCode !== 200) {
+        throw new Exception("Ollama API Error: HTTP $httpCode. Make sure Ollama is installed and running.");
+    }
+    
+    $result = json_decode($response, true);
+    
+    if (isset($result['response'])) {
+        return $result['response'];
+    }
+    
+    throw new Exception("Unexpected Ollama API response format");
+}
+
+// ==============================================
+// PROMPT TEMPLATES
+// ==============================================
+
+/**
+ * Build Executive Summary Report Prompt
+ */
+function buildReportPrompt($auditData) {
+    $org = $auditData['organization_name'];
+    $industry = $auditData['industry'];
+    $exposure = $auditData['exposure_level'];
+    $riskLevel = $auditData['final_risk_level'];
+    $compliance = $auditData['compliance_percentage'];
+    
+    // Format top 5 risks
+    $risksList = "";
+    if (isset($auditData['top_5_risks']) && is_array($auditData['top_5_risks'])) {
+        foreach ($auditData['top_5_risks'] as $i => $risk) {
+            $num = $i + 1;
+            $risksList .= "{$num}. {$risk['title']}\n";
+            $risksList .= "   - Likelihood: {$risk['likelihood']}/5\n";
+            $risksList .= "   - Impact: {$risk['impact']}/5\n";
+            $risksList .= "   - Risk Score: {$risk['risk_score']}\n";
+            $risksList .= "   - NIST Function: {$risk['nist_function']}\n";
+            $risksList .= "   - Description: {$risk['description']}\n\n";
+        }
+    }
+    
+    $prompt = <<<PROMPT
+You are a professional Cybersecurity Auditor integrated into the SRM-Audit system.
+
+Based ONLY on the audit data below:
+
+**Organization:** {$org}
+**Industry:** {$industry}
+**Exposure Level:** {$exposure}
+**Final Risk Level:** {$riskLevel}
+**Compliance Percentage:** {$compliance}%
+
+**Top 5 Critical Risks:**
+{$risksList}
+
+**Generate a comprehensive audit report with these sections:**
+
+# 1. EXECUTIVE SUMMARY
+Brief overview for C-level executives highlighting key risks and business impact.
+
+# 2. ORGANIZATIONAL RISK OVERVIEW  
+Current security posture, exposure analysis, and risk landscape summary.
+
+# 3. TOP 5 CRITICAL RISKS ANALYSIS
+Detailed explanation of each risk, business impact, and urgency assessment.
+
+# 4. MITIGATION RECOMMENDATIONS
+Specific actionable steps with priority ranking and resource requirements.
+
+# 5. NIST CSF ALIGNMENT
+Framework mapping, compliance gaps, and improvement roadmap.
+
+# 6. STRATEGIC RECOMMENDATIONS
+Long-term security strategy and investment priorities.
+
+# 7. CONCLUSION
+Summary of findings and next steps.
+
+**Strict Constraints:**
+- Use formal corporate tone suitable for board presentations
+- Do NOT recalculate any scores or metrics
+- Do NOT add new risks beyond the provided list
+- Only use the data provided above
+- Maximum 2000 words
+- Use professional audit report structure
+- Include actionable, specific recommendations
+
+Generate the complete report now:
+PROMPT;
+
+    return $prompt;
 }
 
 /**
- * Generate AI Audit Report
+ * Build Chatbot Guidance Prompt
+ */
+function buildChatbotPrompt($userQuestion) {
+    $prompt = <<<PROMPT
+You are an educational Cybersecurity GRC (Governance, Risk, and Compliance) assistant for the SRM-Audit system.
+
+**Your Role:**
+- Explain audit concepts and frameworks clearly
+- Help users understand cybersecurity terminology  
+- Provide educational guidance on risk assessment methodologies
+
+**Strict Rules You MUST Follow:**
+- You do NOT have access to any database or user data
+- You CANNOT provide contextual decisions about specific audits
+- You CANNOT modify, calculate, or recalculate any scores
+- You CANNOT access real audit data or findings
+- Keep answers under 250 words - provide complete, helpful explanations
+- Use simple, clear, educational language
+- Always finish your thoughts completely
+
+**Topics You CAN Explain:**
+- Risk assessment concepts (Likelihood, Impact, Risk Score)
+- CIA Triad (Confidentiality, Integrity, Availability)
+- NIST Cybersecurity Framework and its 5 functions
+- Vulnerability assessment methodologies
+- Threat vs Risk vs Vulnerability differences
+- How to prioritize security risks
+- Basic audit terminology and concepts
+
+**User Question:**
+{$userQuestion}
+
+**Your Educational Answer (max 150 words):**
+PROMPT;
+
+    return $prompt;
+}
+
+// ==============================================
+// HIGH-LEVEL WRAPPER FUNCTIONS
+// ==============================================
+
+/**
+ * Generate Audit Report with AI
  * 
- * @param array $auditData Audit session data
- * @return array Response with generated report
+ * @param array $auditData Must contain: organization_name, industry, exposure_level,
+ *                         final_risk_level, compliance_percentage, top_5_risks
+ * @return array ['success' => bool, 'report' => string, 'provider' => string] or ['success' => bool, 'error' => string]
  */
 function generateAuditReport($auditData) {
-    $systemPrompt = "You are a professional Cybersecurity Auditor. Generate formal audit reports in Markdown format with proper headings.";
-    $userPrompt = getReportPrompt($auditData);
-    
-    return callOpenAI($systemPrompt, $userPrompt, 1000);
+    try {
+        $prompt = buildReportPrompt($auditData);
+        $report = callAI($prompt, 2000);
+        
+        return [
+            'success' => true,
+            'report' => $report,
+            'provider' => AI_PROVIDER
+        ];
+    } catch (Exception $e) {
+        return [
+            'success' => false,
+            'error' => $e->getMessage()
+        ];
+    }
 }
 
 /**
- * Process Chatbot Question
+ * Process Chatbot Question with AI
  * 
- * @param string $question User question
- * @return array Response with answer
+ * @param string $question User's question
+ * @return array ['success' => bool, 'answer' => string] or ['success' => bool, 'error' => string]
  */
-function processChatbotQuestion($question) {
-    $systemPrompt = getChatbotSystemPrompt();
-    
-    return callOpenAI($systemPrompt, $question, 300);
+function chatbotGuidance($userQuestion) {
+    try {
+        $prompt = buildChatbotPrompt($userQuestion);
+        $answer = callAI($prompt, 600);
+        
+        return [
+            'success' => true,
+            'answer' => $answer
+        ];
+    } catch (Exception $e) {
+        return [
+            'success' => false,
+            'error' => $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * Test AI Connection
+ * 
+ * @return array ['success' => bool, 'provider' => string, 'message' => string, 'response' => string]
+ */
+function testAIConnection() {
+    try {
+        $response = callAI("Say 'Connection successful!' if you receive this message.", 50);
+        return [
+            'success' => true,
+            'provider' => AI_PROVIDER,
+            'message' => 'AI connection successful!',
+            'response' => $response
+        ];
+    } catch (Exception $e) {
+        return [
+            'success' => false,
+            'provider' => AI_PROVIDER,
+            'error' => $e->getMessage()
+        ];
+    }
 }
 
 // ==============================================
-// SETUP INSTRUCTIONS
+// CONFIGURATION GUIDE
 // ==============================================
 /*
-📋 HOW TO SET UP AI:
+📋 SETUP INSTRUCTIONS:
 
-1️⃣ Get OpenAI API Key:
-   - Go to: https://platform.openai.com/api-keys
-   - Create account or login
-   - Click "Create new secret key"
-   - Copy the key (starts with sk-...)
-
-2️⃣ Configure this file:
-   - Replace 'your-openai-api-key-here' with your actual key
-   - Line 13: define('OPENAI_API_KEY', 'sk-your-actual-key');
-
-3️⃣ Test the integration:
-   - Use api/ai_actions.php?action=test
-   - Check if connection works
-
-4️⃣ Cost Estimation for GPT-4o-mini:
-   Report Generation:
-   - Input: ~500 tokens ($0.000075)
-   - Output: ~400 tokens ($0.00024)
-   - Total per report: ~$0.0003 (0.03 cents)
+1️⃣ Choose AI Provider (edit .env file):
    
-   Chatbot:
-   - Per question: ~$0.0001 (0.01 cents)
-   
-   Monthly cost for 1000 reports + 5000 questions:
-   - Reports: $0.30
-   - Chat: $0.50
-   - Total: ~$0.80/month
+   AI_PROVIDER=gemini    # FREE, recommended for students
+   AI_PROVIDER=openai    # PAID, highest quality
+   AI_PROVIDER=ollama    # FREE, local, requires installation
 
-5️⃣ Security Best Practices:
-   - Store API key in environment variable (not in code)
-   - Use .env file with PHP dotenv library
-   - Never commit API key to Git
-   - Add rate limiting to prevent abuse
+2️⃣ Add API Key to .env:
+
+   For Gemini (FREE):
+   - Get key: https://aistudio.google.com/app/apikey
+   - Add to .env: GEMINI_API_KEY=AIzaSy...
+
+   For OpenAI (PAID):
+   - Get key: https://platform.openai.com/api-keys  
+   - Add to .env: OPENAI_API_KEY=sk-...
+
+   For Ollama (LOCAL):
+   - Install: https://ollama.com/download
+   - Run: ollama pull llama3.2:3b
+   - Start: ollama serve
+   - Update .env: OLLAMA_MODEL=llama3.2:3b
+
+3️⃣ Test Connection:
+   http://localhost/AuditRiskTools/api/ai_actions.php?action=test
+
+4️⃣ Security Best Practices:
+   ✓ API keys are in .env (NOT in code)
+   ✓ .env is in .gitignore (NOT committed to Git)
+   ✓ Use .env.example as template for others
+   ✓ Different .env for development/production
+
+📊 COST COMPARISON:
+   
+   Gemini (FREE forever):
+   - 15 requests/minute
+   - 1,500 requests/day
+   - Perfect for: Student projects, demos
+   
+   OpenAI GPT-4o-mini:
+   - $0.15/1M input tokens
+   - $0.60/1M output tokens  
+   - ~$0.80/month for 1000 reports
+   
+   Ollama (FREE, runs on your PC):
+   - Unlimited requests
+   - No internet needed
+   - Requires: 8GB RAM minimum
 */
 ?>

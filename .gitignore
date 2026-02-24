@@ -1,4 +1,30 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Vendor
+/vendor/
+
+# Composer
+composer.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
 .DS_Store
-AI_SETUP_GUIDE.md
-SETUP_GUIDE.md
-AI_IMPLEMENTATION_SUMMARY.md
+Thumbs.db
+
+# Logs
+*.log
+error_log
+
+# Cache
+cache/
+temp/
+.DS_Store
+/SETUP

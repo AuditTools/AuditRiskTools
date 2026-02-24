@@ -67,6 +67,8 @@
             border-radius: 1rem;
             max-width: 80%;
             word-wrap: break-word;
+            white-space: pre-wrap;
+            line-height: 1.5;
         }
         
         .message.user .message-bubble {
@@ -281,6 +283,8 @@
             bubbleDiv.style.borderColor = '#fcc';
         }
         
+        // Preserve line breaks and allow text wrapping
+        bubbleDiv.style.whiteSpace = 'pre-wrap';
         bubbleDiv.textContent = text;
         messageDiv.appendChild(bubbleDiv);
         chatMessages.appendChild(messageDiv);
