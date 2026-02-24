@@ -237,32 +237,54 @@ CREATE TABLE findings (
 -- ====================================================
 CREATE TABLE ai_reports (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    audit_id INT NOT NULL,
+    audit_session_id INT NOT NULL,
     
-    -- Report sections
-    executive_summary TEXT,
-    risk_overview TEXT,
-    top_risks_analysis TEXT,
-    mitigation_recommendations TEXT,
-    nist_alignment TEXT,
-    strategic_recommendations TEXT,
-    conclusion TEXT,
-    
-    -- Full report
-    full_report LONGTEXT,
+    -- Report type and content
+    report_type ENUM('executive_summary', 'full_report', 'custom') DEFAULT 'executive_summary',
+    report_content LONGTEXT NOT NULL,
     
     -- AI metadata
-    ai_model VARCHAR(100),
+    tokens_used INT DEFAULT 0,
+    model_used VARCHAR(50),
     generation_time_seconds DECIMAL(5,2),
     
-    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    FOREIGN KEY (audit_id) REFERENCES audit_sessions(id) ON DELETE CASCADE,
-    INDEX idx_audit_id (audit_id)
+    FOREIGN KEY (audit_session_id) REFERENCES audit_sessions(id) ON DELETE CASCADE,
+    INDEX idx_audit_session_id (audit_session_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ====================================================
--- 8️⃣ AUDIT LOGS TABLE (OPTIONAL - RECOMMENDED)
+-- 8️⃣ CHATBOT HISTORY TABLE
+-- ====================================================
+-- Stores educational Q&A interactions
+-- For analytics and user support
+-- ====================================================
+CREATE TABLE chatbot_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    
+    -- Conversation data
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    
+    -- AI metadata
+    tokens_used INT DEFAULT 0,
+    model_used VARCHAR(50),
+    
+    -- Session tracking
+    session_id VARCHAR(100),
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_created_at (created_at),
+    INDEX idx_session_id (session_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ====================================================
+-- 9️⃣ AUDIT LOGS TABLE (OPTIONAL - RECOMMENDED)
 -- ====================================================
 -- Tracks user actions for compliance and security
 -- ====================================================

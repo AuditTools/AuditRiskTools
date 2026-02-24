@@ -8,7 +8,7 @@
 define('DB_HOST', 'localhost');
 define('DB_PORT', '3306');
 define('DB_NAME', 'audit');
-define('DB_USER', 'root');        // Ganti dengan username MySQL Anda
+define('DB_USER', 'root');        //  username MySQL Anda
 define('DB_PASS', '');            // Ganti dengan password MySQL Anda
 
 // Database connection
@@ -24,10 +24,10 @@ try {
     $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
     
 } catch (PDOException $e) {
-    // Log error (jangan tampilkan detail error di production)
+    // Log error (development only)
     error_log("Database Connection Error: " . $e->getMessage());
     
-    // Tampilkan pesan error yang user-friendly
+    // pesan error 
     die("
         <!DOCTYPE html>
         <html>

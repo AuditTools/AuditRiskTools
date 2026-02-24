@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     // For now, display the link (development only)
                     $resetLink = "http://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']) . "/forgot_pw.php?token=" . $resetToken;
                     
-                    $success = "Password reset link has been generated. (In production, this would be sent via email)<br><br>
+                    $success = "Password reset link has been generated. <br><br>
                                <strong>Reset Link:</strong><br>
                                <a href='{$resetLink}' class='btn btn-primary btn-sm mt-2'>Click here to reset password</a>";
                 } else {

@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chatbot - SRM Audit</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        /* Floating Chat Button */
+        .chat-float-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            cursor: pointer;
+            z-index: 1000;
+            transition: transform 0.3s;
+        }
+        
+        .chat-float-btn:hover {
+            transform: scale(1.1);
+        }
+        
+        /* Chat Modal Customization */
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 0.5rem 0.5rem 0 0;
+            padding: 1rem;
+        }
+        
+        .chat-body {
+            height: 400px;
+            overflow-y: auto;
+            padding: 1rem;
+            background-color: #f8f9fa;
+        }
+        
+        .message {
+            margin-bottom: 1rem;
+            animation: fadeIn 0.3s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .message.user {
+            text-align: right;
+        }
+        
+        .message.bot {
+            text-align: left;
+        }
+        
+        .message-bubble {
+            display: inline-block;
+            padding: 0.75rem 1rem;
+            border-radius: 1rem;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        
+        .message.user .message-bubble {
+            background: #667eea;
+            color: white;
+        }
+        
+        .message.bot .message-bubble {
+            background: white;
+            color: #333;
+            border: 1px solid #dee2e6;
+        }
+        
+        .typing-indicator {
+            display: none;
+            padding: 0.5rem;
+        }
+        
+        .typing-indicator span {
+            height: 8px;
+            width: 8px;
+            background-color: #999;
+            border-radius: 50%;
+            display: inline-block;
+            margin: 0 2px;
+            animation: bounce 1.4s infinite;
+        }
+        
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        
+        @keyframes bounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-10px); }
+        }
+        
+        .quick-questions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .quick-question-btn {
+            font-size: 0.85rem;
+            padding: 0.4rem 0.8rem;
+            border-radius: 1rem;
+            background: white;
+            border: 1px solid #667eea;
+            color: #667eea;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .quick-question-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Floating Chat Button -->
+<button class="chat-float-btn" data-bs-toggle="modal" data-bs-target="#chatModal">
+    <i class="bi bi-chat-dots fs-3"></i>
+</button>
+
+<!-- Chat Modal -->
+<div class="modal fade" id="chatModal" tabindex="-1" aria-labelledby="chatModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="chat-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-0">
+                            <i class="bi bi-robot"></i> GRC Assistant
+                        </h5>
+                        <small>Ask me about audit frameworks</small>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+            </div>
+            
+            <div class="modal-body p-0">
+                <!-- Quick Questions -->
+                <div class="p-3 border-bottom">
+                    <small class="text-muted d-block mb-2">Quick Questions:</small>
+                    <div class="quick-questions">
+                        <button class="quick-question-btn" onclick="askQuickQuestion('What is CIA triad?')">
+                            CIA Triad
+                        </button>
+                        <button class="quick-question-btn" onclick="askQuickQuestion('Explain NIST Protect function')">
+                            NIST Protect
+                        </button>
+                        <button class="quick-question-btn" onclick="askQuickQuestion('How to calculate risk score?')">
+                            Risk Score
+                        </button>
+                        <button class="quick-question-btn" onclick="askQuickQuestion('What is likelihood in risk assessment?')">
+                            Likelihood
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Chat Messages -->
+                <div class="chat-body" id="chatMessages">
+                    <div class="message bot">
+                        <div class="message-bubble">
+                            <strong>👋 Hello!</strong><br>
+                            I'm your GRC Assistant. I can help explain audit concepts, frameworks, and methodologies.
+                            <br><br>
+                            <small class="text-muted">Try asking: "What is NIST CSF?" or "How to assess impact?"</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Typing Indicator -->
+                <div class="typing-indicator px-3" id="typingIndicator">
+                    <div class="message bot">
+                        <div class="message-bubble">
+                            <span></span><span></span><span></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <form id="chatForm" class="w-100">
+                    <div class="input-group">
+                        <input 
+                            type="text" 
+                            class="form-control" 
+                            id="userQuestion" 
+                            placeholder="Ask me anything about GRC..."
+                            maxlength="500"
+                            required
+                        >
+                        <button class="btn btn-primary" type="submit">
+                            <i class="bi bi-send"></i>
+                        </button>
+                    </div>
+                    <small class="text-muted">Max 500 characters</small>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    const chatMessages = document.getElementById('chatMessages');
+    const chatForm = document.getElementById('chatForm');
+    const userQuestionInput = document.getElementById('userQuestion');
+    const typingIndicator = document.getElementById('typingIndicator');
+    
+    // Handle form submission
+    chatForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const question = userQuestionInput.value.trim();
+        
+        if (!question) return;
+        
+        // Display user message
+        addMessage('user', question);
+        userQuestionInput.value = '';
+        
+        // Show typing indicator
+        typingIndicator.style.display = 'block';
+        scrollToBottom();
+        
+        try {
+            // Call AI API
+            const formData = new FormData();
+            formData.append('question', question);
+            
+            const response = await fetch('/AuditRiskTools/api/ai_actions.php?action=chatbot', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            // Hide typing indicator
+            typingIndicator.style.display = 'none';
+            
+            if (result.success) {
+                addMessage('bot', result.answer);
+            } else {
+                addMessage('bot', `❌ Error: ${result.message}`, true);
+            }
+        } catch (error) {
+            typingIndicator.style.display = 'none';
+            addMessage('bot', '❌ Connection error. Please check your setup.', true);
+            console.error('Chat error:', error);
+        }
+    });
+    
+    // Add message to chat
+    function addMessage(sender, text, isError = false) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${sender}`;
+        
+        const bubbleDiv = document.createElement('div');
+        bubbleDiv.className = 'message-bubble';
+        
+        if (isError) {
+            bubbleDiv.style.backgroundColor = '#fee';
+            bubbleDiv.style.borderColor = '#fcc';
+        }
+        
+        bubbleDiv.textContent = text;
+        messageDiv.appendChild(bubbleDiv);
+        chatMessages.appendChild(messageDiv);
+        
+        scrollToBottom();
+    }
+    
+    // Scroll chat to bottom
+    function scrollToBottom() {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+    
+    // Quick question handler
+    function askQuickQuestion(question) {
+        userQuestionInput.value = question;
+        chatForm.dispatchEvent(new Event('submit'));
+    }
+    
+    // Clear chat on modal close
+    document.getElementById('chatModal').addEventListener('hidden.bs.modal', function () {
+        // Optional: keep chat history or clear it
+        // chatMessages.innerHTML = ''; // Uncomment to clear on close
+    });
+</script>
+
+<!-- DEMO: Page Content (Remove in production) -->
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="card">
+                <div class="card-body">
+                    <h1 class="card-title">
+                        <i class="bi bi-robot text-primary"></i>
+                        AI Chatbot Demo
+                    </h1>
+                    <p class="card-text">
+                        This is a demo page for the SRM-Audit AI Chatbot feature.
+                        Click the purple button in the bottom-right corner to start chatting!
+                    </p>
+                    
+                    <hr>
+                    
+                    <h5>Features:</h5>
+                    <ul>
+                        <li>✅ Floating chat button</li>
+                        <li>✅ Bootstrap modal interface</li>
+                        <li>✅ Quick question buttons</li>
+                        <li>✅ Typing indicator</li>
+                        <li>✅ Message history</li>
+                        <li>✅ Error handling</li>
+                        <li>✅ Character limit (500)</li>
+                        <li>✅ Smooth animations</li>
+                    </ul>
+                    
+                    <hr>
+                    
+                    <h5>Sample Questions:</h5>
+                    <div class="list-group">
+                        <div class="list-group-item">
+                            <strong>Q:</strong> What is the CIA triad?
+                        </div>
+                        <div class="list-group-item">
+                            <strong>Q:</strong> Explain NIST Protect function
+                        </div>
+                        <div class="list-group-item">
+                            <strong>Q:</strong> How to calculate risk score?
+                        </div>
+                        <div class="list-group-item">
+                            <strong>Q:</strong> What is likelihood in risk assessment?
+                        </div>
+                        <div class="list-group-item">
+                            <strong>Q:</strong> Difference between vulnerability and threat?
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info mt-4">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>Note:</strong> Make sure you've configured the OpenAI API key in 
+                        <code>functions/ai_api.php</code> for this to work.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
