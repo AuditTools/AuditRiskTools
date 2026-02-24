@@ -55,11 +55,11 @@ include 'includes/sidebar.php';
 
     <div class="card shadow-sm mb-4">
         <div class="card-body">
-            <h5 class="mb-3">Pilih Organization & Audit Session</h5>
+            <h5 class="mb-3">Choose Organization & Audit Session</h5>
             <form id="auditSwitcher" class="row g-2">
                 <div class="col-md-5">
                     <select id="orgSelect" class="form-select">
-                        <option value="">Semua Organization</option>
+                        <option value="">All Organization</option>
                         <?php foreach ($organizations as $org): ?>
                             <option value="<?php echo intval($org['id']); ?>" <?php echo $selectedOrgId === intval($org['id']) ? 'selected' : ''; ?>>
                                 <?php echo htmlspecialchars($org['organization_name']); ?>
@@ -80,14 +80,14 @@ include 'includes/sidebar.php';
                     </select>
                 </div>
                 <div class="col-md-2 d-grid">
-                    <button class="btn btn-primary" type="submit">Buka</button>
+                    <button class="btn btn-primary" type="submit">Open</button>
                 </div>
             </form>
         </div>
     </div>
 
     <?php if (!$audit_id): ?>
-        <div class="alert alert-warning">Pilih audit session dulu untuk mulai manage assets atau findings.</div>
+        <div class="alert alert-warning">Choose an audit session first to start managing assets or findings.</div>
     <?php elseif (!$audit): ?>
         <div class="alert alert-danger">Audit not found or access denied.</div>
     <?php else: ?>
