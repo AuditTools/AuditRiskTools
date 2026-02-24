@@ -4,12 +4,12 @@
  * PDO connection with error handling
  */
 
-// Database configuration
-define('DB_HOST', 'localhost');
-define('DB_PORT', '3306');
-define('DB_NAME', 'audit');
-define('DB_USER', 'root');        // Ganti dengan username MySQL Anda
-define('DB_PASS', '');            // Ganti dengan password MySQL Anda
+// Database configuration (env override supported)
+define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
+define('DB_PORT', getenv('DB_PORT') ?: '8889');
+define('DB_NAME', getenv('DB_NAME') ?: 'audit');
+define('DB_USER', getenv('DB_USER') ?: 'root');
+define('DB_PASS', getenv('DB_PASS') ?: 'root');
 
 // Database connection
 try {

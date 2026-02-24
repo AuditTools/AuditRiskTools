@@ -23,6 +23,10 @@ try {
     switch ($action) {
         case 'add':
             // Add new asset
+            if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+                throw new Exception('Invalid CSRF token');
+            }
+
             $auditId = intval($_POST['audit_id']);
             $assetName = trim($_POST['asset_name']);
             $ipAddress = trim($_POST['ip_address'] ?? '');
@@ -70,7 +74,7 @@ try {
             
             $assetId = $pdo->lastInsertId();
             
-            // Update audit average criticality
+            // Update audit summary metrics
             updateAuditCriticality($pdo, $auditId);
             
             logAction($pdo, $userId, 'ADD_ASSET', 'assets', $assetId);
@@ -86,6 +90,10 @@ try {
             
         case 'update':
             // Update asset
+            if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+                throw new Exception('Invalid CSRF token');
+            }
+
             $assetId = intval($_POST['id']);
             $assetName = trim($_POST['asset_name']);
             $ipAddress = trim($_POST['ip_address'] ?? '');
@@ -136,7 +144,7 @@ try {
                 $assetId
             ]);
             
-            // Update audit average criticality
+            // Update audit summary metrics
             updateAuditCriticality($pdo, $asset['audit_id']);
             
             logAction($pdo, $userId, 'UPDATE_ASSET', 'assets', $assetId);
@@ -148,6 +156,10 @@ try {
             // Delete asset
             $data = json_decode(file_get_contents('php://input'), true);
             $assetId = intval($data['id']);
+
+            if (isset($data['csrf_token']) && !verifyCSRFToken($data['csrf_token'])) {
+                throw new Exception('Invalid CSRF token');
+            }
             
             // Verify ownership and get audit_id
             $stmt = $pdo->prepare("SELECT a.audit_id 
@@ -166,7 +178,7 @@ try {
             $stmt = $pdo->prepare("DELETE FROM assets WHERE id = ?");
             $stmt->execute([$assetId]);
             
-            // Update audit average criticality
+            // Update audit summary metrics
             updateAuditCriticality($pdo, $asset['audit_id']);
             
             logAction($pdo, $userId, 'DELETE_ASSET', 'assets', $assetId);
@@ -223,22 +235,8 @@ try {
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }
 
-function calculateCriticalityLevel($score) {
-    if ($score >= 4.5) return 'Critical';
-    if ($score >= 3.5) return 'High';
-    if ($score >= 2.5) return 'Medium';
-    return 'Low';
-}
-
 function updateAuditCriticality($pdo, $auditId) {
-    $stmt = $pdo->prepare("SELECT AVG(criticality_score) as avg_crit FROM assets WHERE audit_id = ?");
-    $stmt->execute([$auditId]);
-    $result = $stmt->fetch();
-    
-    $avgCrit = $result['avg_crit'] ?? 0;
-    
-    $stmt = $pdo->prepare("UPDATE audit_sessions SET avg_asset_criticality = ? WHERE id = ?");
-    $stmt->execute([$avgCrit, $auditId]);
+    updateAuditMetrics($pdo, $auditId, true);
 }
 
 function logAction($pdo, $userId, $action, $table, $recordId) {

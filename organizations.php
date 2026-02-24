@@ -1,18 +1,11 @@
 <?php
-/**
- * SRM-Audit - Organizations Management
- * Manage organizations under audit
- */
 session_start();
 require_once 'functions/db.php';
 require_once 'functions/auth.php';
-
-// Check authentication
 requireLogin();
 
 $userId = $_SESSION['user_id'];
 
-// Get organizations for this user
 $stmt = $pdo->prepare("SELECT o.*, 
                       (SELECT COUNT(*) FROM audit_sessions WHERE organization_id = o.id) as audit_count
                       FROM organizations o 
@@ -30,14 +23,18 @@ include 'includes/sidebar.php';
 <div class="card mb-4 shadow-sm">
     <div class="card-body">
         <h5>Create Organization</h5>
-        <form>
+
+        <div id="alertBox"></div>
+
+        <form id="orgForm">
+            <?= csrfTokenInput(); ?>
             <div class="row">
                 <div class="col-md-6">
-                    <input class="form-control" placeholder="Organization Name">
+                    <input name="organization_name" class="form-control" placeholder="Organization Name" required>
                 </div>
                 <div class="col-md-4">
-                    <select class="form-select">
-                        <option>Select Industry</option>
+                    <select name="industry" class="form-select" required>
+                        <option value="">Select Industry</option>
                         <option>Finance</option>
                         <option>Healthcare</option>
                         <option>Education</option>
@@ -47,7 +44,7 @@ include 'includes/sidebar.php';
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <button class="btn btn-primary w-100">Create</button>
+                    <button type="submit" class="btn btn-primary w-100">Create</button>
                 </div>
             </div>
         </form>
@@ -67,30 +64,52 @@ include 'includes/sidebar.php';
         <?php if (count($organizations) > 0): ?>
             <?php foreach ($organizations as $org): ?>
                 <tr>
-                    <td><?php echo htmlspecialchars($org['organization_name']); ?></td>
-                    <td><?php echo htmlspecialchars($org['industry']); ?></td>
-                    <td><span class="badge bg-info"><?php echo intval($org['audit_count']); ?></span></td>
+                    <td><?= htmlspecialchars($org['organization_name']) ?></td>
+                    <td><?= htmlspecialchars($org['industry']) ?></td>
+                    <td><span class="badge bg-info"><?= intval($org['audit_count']) ?></span></td>
                     <td>
-                        <a href="audit_sessions.php?org_id=<?php echo intval($org['id']); ?>" class="btn btn-sm btn-dark">
-                            <i class="fas fa-folder-open"></i> Open
+                        <a href="audit_sessions.php?org_id=<?= intval($org['id']) ?>" class="btn btn-sm btn-dark">
+                            Open
                         </a>
-                        <button onclick="editOrg(<?php echo intval($org['id']); ?>)" class="btn btn-sm btn-primary">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button onclick="deleteOrg(<?php echo intval($org['id']); ?>)" class="btn btn-sm btn-danger">
-                            <i class="fas fa-trash"></i>
-                        </button>
                     </td>
                 </tr>
             <?php endforeach; ?>
         <?php else: ?>
             <tr>
                 <td colspan="4" class="text-center text-muted">
-                    <i class="fas fa-info-circle"></i> No organizations yet. Create one to get started.
+                    No organizations yet.
                 </td>
             </tr>
         <?php endif; ?>
     </tbody>
 </table>
+
+<script>
+document.getElementById('orgForm').addEventListener('submit', function(e){
+    e.preventDefault();
+
+    const formData = new FormData(this);
+
+    fetch('api/organization_actions.php?action=add', {
+        method: 'POST',
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success){
+            showAlert('success', data.message);
+            setTimeout(() => location.reload(), 800);
+        } else {
+            showAlert('danger', data.message);
+        }
+    })
+    .catch(() => showAlert('danger', 'Server error'));
+});
+
+function showAlert(type, message){
+    document.getElementById('alertBox').innerHTML =
+        `<div class="alert alert-${type}">${message}</div>`;
+}
+</script>
 
 <?php include 'includes/footer.php'; ?>
