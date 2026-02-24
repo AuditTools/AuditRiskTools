@@ -69,7 +69,7 @@ include 'includes/sidebar.php';
                 </div>
                 <div class="col-md-5">
                     <select id="auditSelect" class="form-select">
-                        <option value="">Pilih Audit Session</option>
+                        <option value="">Choose Audit Session</option>
                         <?php foreach ($allAudits as $auditItem): ?>
                             <option value="<?php echo intval($auditItem['id']); ?>"
                                     data-org-id="<?php echo intval($auditItem['organization_id']); ?>"
