@@ -30,3 +30,5 @@ temp/
 /SETUP
 /test
 
+vendor/
+uploads/
