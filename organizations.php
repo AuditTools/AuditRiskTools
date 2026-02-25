@@ -112,4 +112,12 @@ function showAlert(type, message){
 }
 </script>
 
+<?php 
+// Include chatbot widget (only for logged-in users)
+if (file_exists('includes/chatbot.html')) {
+    readfile('includes/chatbot.html');
+}
+?>
+
+
 <?php include 'includes/footer.php'; ?>

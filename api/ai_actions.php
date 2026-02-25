@@ -99,18 +99,18 @@ try {
             $reportContent = $result['report'];
             $aiProvider = $result['provider'];
             
-            // Save generated report to database
+            // Save generated report to database (using actual table structure)
             $stmt = $pdo->prepare("
-                INSERT INTO ai_reports (audit_session_id, report_type, report_content, model_used) 
-                VALUES (?, 'executive_summary', ?, ?)
+                INSERT INTO ai_reports (audit_id, full_report, ai_model, generated_at) 
+                VALUES (?, ?, ?, NOW())
             ");
             $stmt->execute([$auditId, $reportContent, $aiProvider]);
             
             $reportId = $pdo->lastInsertId();
             
-            // Update audit session
-            $stmt = $pdo->prepare("UPDATE audit_sessions SET last_report_generated = NOW() WHERE id = ?");
-            $stmt->execute([$auditId]);
+            // Note: last_report_generated column doesn't exist in audit_sessions table
+            // $stmt = $pdo->prepare("UPDATE audit_sessions SET last_report_generated = NOW() WHERE id = ?");
+            // $stmt->execute([$auditId]);
             
             logAction($pdo, $userId, 'GENERATE_AI_REPORT', 'ai_reports', $reportId);
             
@@ -173,7 +173,7 @@ try {
             $stmt = $pdo->prepare("
                 SELECT r.*, a.id as audit_id
                 FROM ai_reports r
-                JOIN audit_sessions a ON r.audit_session_id = a.id
+                JOIN audit_sessions a ON r.audit_id = a.id
                 JOIN organizations o ON a.organization_id = o.id
                 WHERE r.id = ? AND o.user_id = ?
             ");
@@ -192,10 +192,10 @@ try {
             $stmt = $pdo->prepare("
                 SELECT r.*, a.session_name, o.organization_name
                 FROM ai_reports r
-                JOIN audit_sessions a ON r.audit_session_id = a.id
+                JOIN audit_sessions a ON r.audit_id = a.id
                 JOIN organizations o ON a.organization_id = o.id
                 WHERE o.user_id = ?
-                ORDER BY r.created_at DESC
+                ORDER BY r.generated_at DESC
             ");
             $stmt->execute([$userId]);
             $reports = $stmt->fetchAll();
