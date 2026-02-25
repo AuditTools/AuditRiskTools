@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test - Audit Create</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #f5f5f5; }
+        .test-box { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        pre { background: #f8f9fa; padding: 15px; border-radius: 5px; overflow: auto; }
+        .error { color: #dc3545; }
+        .success { color: #28a745; }
+    </style>
+</head>
+<body>
+    <h1>🧪 API Test - Create Audit Session</h1>
+    
+    <div class="test-box">
+        <h3>Step 1: Login First</h3>
+        <form id="loginForm">
+            <input type="email" name="email" placeholder="Email" value="test@example.com" required>
+            <input type="password" name="password" placeholder="Password" value="password123" required>
+            <button type="submit">Login</button>
+        </form>
+        <pre id="loginResult"></pre>
+    </div>
+    
+    <div class="test-box">
+        <h3>Step 2: Create Organization (if needed)</h3>
+        <button onclick="createOrg()">Create Test Org</button>
+        <pre id="orgResult"></pre>
+    </div>
+    
+    <div class="test-box">
+        <h3>Step 3: Create Audit Session</h3>
+        <form id="auditForm">
+            <input type="number" name="organization_id" placeholder="Org ID" value="1" required><br>
+            <input type="text" name="session_name" placeholder="Session Name" value="Test Audit" required><br>
+            <select name="digital_scale">
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+            </select><br>
+            <input type="date" name="audit_date" required><br>
+            <button type="submit">Create Audit</button>
+        </form>
+        <pre id="auditResult"></pre>
+    </div>
+    
+    <div class="test-box">
+        <h3>Raw Response Preview</h3>
+        <pre id="rawResponse"></pre>
+    </div>
+
+    <script>
+        // Login
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            
+            try {
+                const res = await fetch('/AuditRiskTools/api/auth_actions.php?action=login', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const text = await res.text();
+                document.getElementById('rawResponse').textContent = 'LOGIN RAW:\n' + text;
+                
+                try {
+                    const data = JSON.parse(text);
+                    document.getElementById('loginResult').textContent = JSON.stringify(data, null, 2);
+                    document.getElementById('loginResult').className = data.success ? 'success' : 'error';
+                } catch (err) {
+                    document.getElementById('loginResult').textContent = 'ERROR: Not valid JSON\n' + text;
+                    document.getElementById('loginResult').className = 'error';
+                }
+            } catch (err) {
+                document.getElementById('loginResult').textContent = 'FETCH ERROR: ' + err.message;
+                document.getElementById('loginResult').className = 'error';
+            }
+        });
+        
+        // Create Org
+        async function createOrg() {
+            const formData = new FormData();
+            formData.append('organization_name', 'Test Company');
+            formData.append('industry', 'Technology');
+            formData.append('contact_person', 'John Doe');
+            formData.append('contact_email', 'john@test.com');
+            
+            try {
+                const res = await fetch('/AuditRiskTools/api/organization_actions.php?action=add', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const text = await res.text();
+                document.getElementById('rawResponse').textContent = 'ORG RAW:\n' + text;
+                
+                try {
+                    const data = JSON.parse(text);
+                    document.getElementById('orgResult').textContent = JSON.stringify(data, null, 2);
+                    document.getElementById('orgResult').className = data.success ? 'success' : 'error';
+                } catch (err) {
+                    document.getElementById('orgResult').textContent = 'ERROR: Not valid JSON\n' + text;
+                    document.getElementById('orgResult').className = 'error';
+                }
+            } catch (err) {
+                document.getElementById('orgResult').textContent = 'FETCH ERROR: ' + err.message;
+                document.getElementById('orgResult').className = 'error';
+            }
+        }
+        
+        // Create Audit
+        document.getElementById('auditForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            
+            try {
+                const res = await fetch('/AuditRiskTools/api/audit_actions.php?action=create', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const text = await res.text();
+                document.getElementById('rawResponse').textContent = 'AUDIT RAW:\n' + text;
+                
+                try {
+                    const data = JSON.parse(text);
+                    document.getElementById('auditResult').textContent = JSON.stringify(data, null, 2);
+                    document.getElementById('auditResult').className = data.success ? 'success' : 'error';
+                } catch (err) {
+                    document.getElementById('auditResult').textContent = 'ERROR: Not valid JSON\n' + text;
+                    document.getElementById('auditResult').className = 'error';
+                }
+            } catch (err) {
+                document.getElementById('auditResult').textContent = 'FETCH ERROR: ' + err.message;
+                document.getElementById('auditResult').className = 'error';
+            }
+        });
+        
+        // Set today's date
+        document.querySelector('[name="audit_date"]').value = new Date().toISOString().split('T')[0];
+    </script>
+</body>
+</html>

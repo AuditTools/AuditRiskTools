@@ -1,159 +1,130 @@
 <?php
 /**
- * SRM-Audit - Risk and exposure calculation helpers
+ * SRM-Audit - Risk Calculation Logic (Hybrid Version)
+ * Combines pure mathematical formulas (defendable for academic presentation) 
+ * with efficient auto-update database execution.
  */
 
-function calculateExposureScore($industry, $digitalScale) {
-	$industryBase = [
-		'Finance' => 4.6,
-		'Healthcare' => 4.2,
-		'Government' => 4.1,
-		'Technology' => 3.7,
-		'Manufacturing' => 3.2,
-		'Retail' => 3.1,
-		'Education' => 2.6,
-		'Other' => 2.6,
-	];
+// 1. EXPOSURE LOGIC (Based on Ordinal Concept 1-3)
+// Called ONLY when creating a new Audit Session .
+function calculateExposureScore($industry, $digital_scale) {
+    // Follows the simple design (High=3, Med=2, Low=1) 
+    $base = [
+        'Finance' => 3, 'Healthcare' => 3, 'Education' => 2,
+        'Retail' => 2, 'Technology' => 2, 'Other' => 1
+    ];
+    $scale = ['Low' => 1, 'Medium' => 2, 'High' => 3];
 
-	$scaleFactor = [
-		'Low' => 0.9,
-		'Medium' => 1.0,
-		'High' => 1.15,
-	];
+    $baseline = $base[$industry] ?? 1; // Default to 'Other' (1)
+    $weight = $scale[$digital_scale] ?? 2; // Default to 'Medium' (2)
+    
+    // Exposure Score = Industry Baseline * Digital Scale Weight
+    $score = $baseline * $weight;
 
-	$base = $industryBase[$industry] ?? 2.8;
-	$factor = $scaleFactor[$digitalScale] ?? 1.0;
+    // Classification 
+    if ($score <= 3) $level = "Low";
+    elseif ($score <= 6) $level = "Medium";
+    else $level = "High";
 
-	$score = min(5.0, round($base * $factor, 2));
-
-	return [
-		'score' => $score,
-		'level' => exposureLevelFromScore($score),
-	];
+    return ['score' => $score, 'level' => $level];
 }
 
-function exposureLevelFromScore($score) {
-	if ($score <= 2.5) {
-		return 'Low';
-	}
-	if ($score <= 3.5) {
-		return 'Medium';
-	}
-	return 'High';
+// 2. AUTO-UPDATE METRICS FUNCTION (Core System Calculation)
+// Call this function EVERY TIME a user adds/updates/deletes an Asset or Finding.
+function updateAuditMetrics($pdo, $auditId) {
+    // A. Retrieve Exposure Score (Stored during audit creation) 
+    $stmt = $pdo->prepare("SELECT exposure_score FROM audit_sessions WHERE id = ?");
+    $stmt->execute([$auditId]);
+    $audit = $stmt->fetch(PDO::FETCH_ASSOC);
+    $exposure_score = (float)($audit['exposure_score'] ?? 0);
+
+    // B. Calculate Average Asset Criticality (Directly from database) 
+    $stmt = $pdo->prepare("SELECT AVG(criticality_score) AS avg_crit FROM assets WHERE audit_id = ?");
+    $stmt->execute([$auditId]);
+    $avg_asset_criticality = (float)($stmt->fetch(PDO::FETCH_ASSOC)['avg_crit'] ?? 0);
+
+    // C. Calculate Average Risk Score 
+    $stmt = $pdo->prepare("SELECT AVG(risk_score) AS avg_risk FROM findings WHERE audit_id = ?");
+    $stmt->execute([$auditId]);
+    $avg_risk_score = (float)($stmt->fetch(PDO::FETCH_ASSOC)['avg_risk'] ?? 0);
+
+    // D. Calculate Final Risk Score (Formula: Exposure * AvgCrit * AvgRisk / 10) 
+    $final_risk_score = 0;
+    if ($exposure_score > 0 && $avg_asset_criticality > 0 && $avg_risk_score > 0) {
+        $final_risk_score = ($exposure_score * $avg_asset_criticality * $avg_risk_score) / 10;
+    }
+    $final_risk_score = round($final_risk_score, 2);
+
+    // E. Classify Final Risk Level 
+    if ($final_risk_score > 70) $final_risk_level = 'Critical';
+    elseif ($final_risk_score >= 41) $final_risk_level = 'High';
+    elseif ($final_risk_score >= 21) $final_risk_level = 'Medium';
+    else $final_risk_level = 'Low';
+
+    // F. Calculate Compliance & Maturity (auto-update) 
+    $compliance = getComplianceAndMaturity($pdo, $auditId);
+
+    // G. Save to database (Final Score, Level, Compliance, Maturity) 
+    $updateStmt = $pdo->prepare("
+        UPDATE audit_sessions 
+        SET final_risk_score = ?, final_risk_level = ?,
+            compliance_percentage = ?, nist_maturity_level = ?
+        WHERE id = ?
+    ");
+    $updateStmt->execute([
+        $final_risk_score, $final_risk_level,
+        $compliance['percentage'], $compliance['maturity'],
+        $auditId
+    ]);
+
+    // H. Return data for Dashboard rendering
+    return [
+        'avg_asset_criticality' => round($avg_asset_criticality, 2),
+        'avg_risk_score' => round($avg_risk_score, 2),
+        'final_risk_score' => $final_risk_score,
+        'final_risk_level' => $final_risk_level,
+        'compliance_percentage' => $compliance['percentage'],
+        'nist_maturity_level' => $compliance['maturity']
+    ];
 }
 
+// 3. HELPER: Calculate Asset Criticality 
+function calculateAssetCriticality($c, $i, $a) {
+    return round(($c + $i + $a) / 3, 2);
+}
+
+// 3b. HELPER: Calculate Criticality Level from score
 function calculateCriticalityLevel($score) {
-	if ($score >= 4.5) {
-		return 'Critical';
-	}
-	if ($score >= 3.5) {
-		return 'High';
-	}
-	if ($score >= 2.5) {
-		return 'Medium';
-	}
-	return 'Low';
+    if ($score >= 4.5) return 'Critical';
+    if ($score >= 3.5) return 'High';
+    if ($score >= 2.5) return 'Medium';
+    return 'Low';
 }
 
-function calculateRiskLevel($riskScore) {
-	if ($riskScore >= 20) {
-		return 'Critical';
-	}
-	if ($riskScore >= 13) {
-		return 'High';
-	}
-	if ($riskScore >= 6) {
-		return 'Medium';
-	}
-	return 'Low';
-}
+// 4. HELPER: Calculate Compliance & Maturity Indicator 
+function getComplianceAndMaturity($pdo, $auditId) {
+    // Per PDF formula: Total Compliant / Total Findings * 100
+    $stmt = $pdo->prepare("
+        SELECT 
+            SUM(CASE WHEN audit_status='Compliant' THEN 1 ELSE 0 END) as compliant_count,
+            COUNT(*) as total
+        FROM findings WHERE audit_id = ?
+    ");
+    $stmt->execute([$auditId]);
+    $res = $stmt->fetch(PDO::FETCH_ASSOC);
 
-function calculateAuditRisk($pdo, $auditId) {
-	return updateAuditMetrics($pdo, $auditId, false);
-}
+    $total = (int)$res['total'];
+    $compliant = (int)$res['compliant_count'];
+    
+    // If there are no findings yet, assume 100% compliant
+    $percentage = ($total > 0) ? round(($compliant / $total) * 100, 2) : 100.0;
 
-function updateAuditMetrics($pdo, $auditId, $persist = true) {
-	$stmt = $pdo->prepare("SELECT AVG(criticality_score) AS avg_crit FROM assets WHERE audit_id = ?");
-	$stmt->execute([$auditId]);
-	$avgCrit = (float)($stmt->fetch(PDO::FETCH_ASSOC)['avg_crit'] ?? 0);
+    // Maturity Classification per PDF 
+    if ($percentage <= 40) $maturity = 'Initial';
+    elseif ($percentage <= 70) $maturity = 'Developing';
+    elseif ($percentage <= 90) $maturity = 'Managed';
+    else $maturity = 'Optimized';
 
-	$stmt = $pdo->prepare("SELECT AVG(risk_score) AS avg_risk FROM findings WHERE audit_id = ?");
-	$stmt->execute([$auditId]);
-	$avgRisk = (float)($stmt->fetch(PDO::FETCH_ASSOC)['avg_risk'] ?? 0);
-
-	$stmt = $pdo->prepare("SELECT audit_status, COUNT(*) AS total FROM findings WHERE audit_id = ? GROUP BY audit_status");
-	$stmt->execute([$auditId]);
-	$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-	$totalFindings = 0;
-	$compliantCount = 0;
-	$partialCount = 0;
-
-	foreach ($rows as $row) {
-		$count = (int)$row['total'];
-		$totalFindings += $count;
-
-		if ($row['audit_status'] === 'Compliant') {
-			$compliantCount += $count;
-		} elseif ($row['audit_status'] === 'Partially Compliant') {
-			$partialCount += $count;
-		}
-	}
-
-	if ($totalFindings > 0) {
-		$compliancePercentage = (($compliantCount + ($partialCount * 0.5)) / $totalFindings) * 100;
-	} else {
-		$compliancePercentage = 0.0;
-	}
-
-	$finalRiskScore = 0.0;
-	if ($avgCrit > 0 && $avgRisk > 0) {
-		$finalRiskScore = ($avgCrit * $avgRisk) / 5;
-	}
-
-	$riskLevel = calculateRiskLevel($finalRiskScore);
-	$compliancePercentage = round($compliancePercentage, 2);
-
-	if ($compliancePercentage < 40) {
-		$nistLevel = 'Initial';
-	} elseif ($compliancePercentage < 60) {
-		$nistLevel = 'Developing';
-	} elseif ($compliancePercentage < 80) {
-		$nistLevel = 'Managed';
-	} else {
-		$nistLevel = 'Optimized';
-	}
-
-	$data = [
-		'avg_asset_criticality' => round($avgCrit, 2),
-		'avg_risk_score' => round($avgRisk, 2),
-		'final_risk_score' => round($finalRiskScore, 2),
-		'final_risk_level' => $riskLevel,
-		'compliance_percentage' => $compliancePercentage,
-		'nist_maturity_level' => $nistLevel,
-	];
-
-	if ($persist) {
-		$stmt = $pdo->prepare("UPDATE audit_sessions
-			SET avg_asset_criticality = ?,
-				avg_risk_score = ?,
-				final_risk_score = ?,
-				final_risk_level = ?,
-				compliance_percentage = ?,
-				nist_maturity_level = ?,
-				updated_at = NOW()
-			WHERE id = ?");
-		$stmt->execute([
-			$data['avg_asset_criticality'],
-			$data['avg_risk_score'],
-			$data['final_risk_score'],
-			$data['final_risk_level'],
-			$data['compliance_percentage'],
-			$data['nist_maturity_level'],
-			$auditId,
-		]);
-	}
-
-	return $data;
+    return ['percentage' => $percentage, 'maturity' => $maturity];
 }
 ?>

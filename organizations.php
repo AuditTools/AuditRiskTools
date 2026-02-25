@@ -28,11 +28,11 @@ include 'includes/sidebar.php';
 
         <form id="orgForm">
             <?= csrfTokenInput(); ?>
-            <div class="row">
+            <div class="row mb-2">
                 <div class="col-md-6">
                     <input name="organization_name" class="form-control" placeholder="Organization Name" required>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <select name="industry" class="form-select" required>
                         <option value="">Select Industry</option>
                         <option>Finance</option>
@@ -40,8 +40,28 @@ include 'includes/sidebar.php';
                         <option>Education</option>
                         <option>Retail</option>
                         <option>Technology</option>
+                        <option>Government</option>
+                        <option>Manufacturing</option>
                         <option>Other</option>
                     </select>
+                </div>
+                <div class="col-md-3">
+                    <input name="number_of_employees" type="number" class="form-control" placeholder="No. of Employees" min="1">
+                </div>
+            </div>
+            <div class="row mb-2">
+                <div class="col-md-6">
+                    <select name="system_type" class="form-select">
+                        <option value="">Select System Type</option>
+                        <option value="Web Application">Web Application</option>
+                        <option value="Mobile Application">Mobile Application</option>
+                        <option value="Internal Network">Internal Network</option>
+                        <option value="Cloud Infrastructure">Cloud Infrastructure</option>
+                        <option value="Hybrid">Hybrid</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <input name="contact_person" class="form-control" placeholder="Contact Person (optional)">
                 </div>
                 <div class="col-md-2">
                     <button type="submit" class="btn btn-primary w-100">Create</button>
@@ -56,6 +76,8 @@ include 'includes/sidebar.php';
         <tr>
             <th>Name</th>
             <th>Industry</th>
+            <th>Employees</th>
+            <th>System Type</th>
             <th>Audits</th>
             <th>Action</th>
         </tr>
@@ -66,17 +88,19 @@ include 'includes/sidebar.php';
                 <tr>
                     <td><?= htmlspecialchars($org['organization_name']) ?></td>
                     <td><?= htmlspecialchars($org['industry']) ?></td>
+                    <td><?= $org['number_of_employees'] ? number_format(intval($org['number_of_employees'])) : '<span class="text-muted">—</span>' ?></td>
+                    <td><?= !empty($org['system_type']) ? htmlspecialchars($org['system_type']) : '<span class="text-muted">—</span>' ?></td>
                     <td><span class="badge bg-info"><?= intval($org['audit_count']) ?></span></td>
                     <td>
                         <a href="audit_sessions.php?org_id=<?= intval($org['id']) ?>" class="btn btn-sm btn-dark">
-                            Open
+                            Create Audit Sessions
                         </a>
                     </td>
                 </tr>
             <?php endforeach; ?>
         <?php else: ?>
             <tr>
-                <td colspan="4" class="text-center text-muted">
+                <td colspan="6" class="text-center text-muted">
                     No organizations yet.
                 </td>
             </tr>
@@ -111,5 +135,13 @@ function showAlert(type, message){
         `<div class="alert alert-${type}">${message}</div>`;
 }
 </script>
+
+<?php 
+// Include chatbot widget (only for logged-in users)
+if (file_exists('includes/chatbot.html')) {
+    readfile('includes/chatbot.html');
+}
+?>
+
 
 <?php include 'includes/footer.php'; ?>

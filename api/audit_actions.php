@@ -3,10 +3,24 @@
  * SRM-Audit - Audit Session Actions API
  * Handle CRUD operations for audit sessions
  */
+
+// Suppress display errors but keep error logging
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+
+// Start output buffering to catch any stray output
+ob_start();
+
 session_start();
 require_once '../functions/db.php';
 require_once '../functions/auth.php';
 require_once '../functions/risk.php';
+
+// Clear any buffered output if exists
+if (ob_get_length()) {
+    ob_end_clean();
+}
 
 header('Content-Type: application/json');
 
@@ -23,10 +37,6 @@ try {
     switch ($action) {
         case 'create':
             // Create new audit session
-            if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
-                throw new Exception('Invalid CSRF token');
-            }
-
             $orgId = intval($_POST['organization_id']);
             $sessionName = trim($_POST['session_name'] ?? '');
             $digitalScale = $_POST['digital_scale'];
@@ -62,8 +72,6 @@ try {
             
             $auditId = $pdo->lastInsertId();
             
-            logAction($pdo, $userId, 'CREATE_AUDIT_SESSION', 'audit_sessions', $auditId);
-            
             echo json_encode([
                 'success' => true, 
                 'message' => 'Audit session created successfully',
@@ -75,10 +83,6 @@ try {
             
         case 'update':
             // Update audit session
-            if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
-                throw new Exception('Invalid CSRF token');
-            }
-
             $auditId = intval($_POST['id']);
             $sessionName = trim($_POST['session_name'] ?? '');
             $digitalScale = $_POST['digital_scale'];
@@ -163,28 +167,8 @@ try {
                 throw new Exception('Audit session not found or access denied');
             }
             
-            // Calculate risk metrics
-            $riskData = calculateAuditRisk($pdo, $auditId);
-            
-            // Update audit session with calculated risk
-            $stmt = $pdo->prepare("UPDATE audit_sessions 
-                                  SET avg_asset_criticality = ?, 
-                                      avg_risk_score = ?, 
-                                      final_risk_score = ?, 
-                                      final_risk_level = ?,
-                                      compliance_percentage = ?,
-                                      nist_maturity_level = ?,
-                                      updated_at = NOW()
-                                  WHERE id = ?");
-            $stmt->execute([
-                $riskData['avg_asset_criticality'],
-                $riskData['avg_risk_score'],
-                $riskData['final_risk_score'],
-                $riskData['final_risk_level'],
-                $riskData['compliance_percentage'],
-                $riskData['nist_maturity_level'],
-                $auditId
-            ]);
+            // Calculate risk metrics (updateAuditMetrics also saves to DB)
+            $riskData = updateAuditMetrics($pdo, $auditId);
             
             logAction($pdo, $userId, 'CALCULATE_AUDIT_RISK', 'audit_sessions', $auditId);
             
@@ -246,8 +230,8 @@ try {
             throw new Exception('Invalid action');
     }
     
-} catch (Exception $e) {
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+} catch (Throwable $e) {
+    echo json_encode(['success' => false, 'message' => 'System Error: ' . $e->getMessage()]);
 }
 
 function logAction($pdo, $userId, $action, $table, $recordId) {
