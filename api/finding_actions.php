@@ -32,6 +32,8 @@ try {
             $auditStatus = $_POST['audit_status'] ?? 'Non-Compliant';
             $likelihood = intval($_POST['likelihood']);
             $impact = intval($_POST['impact']);
+            $owaspCategory = trim($_POST['owasp_category'] ?? '');
+            $recommendation = trim($_POST['recommendation'] ?? '');
 
             if ($likelihood < 1 || $likelihood > 5 || $impact < 1 || $impact > 5) {
                 throw new Exception('Likelihood and impact must be between 1 and 5');
@@ -63,13 +65,14 @@ try {
             elseif ($riskScore >= 10) $riskLevel = 'Medium';
             else $riskLevel = 'Low';
 
-            // 2. Insert using your exact schema fields
+            // 2. Insert with OWASP category and recommendation support
             $stmt = $pdo->prepare("INSERT INTO findings
-                (audit_id, asset_id, title, description, likelihood, impact, risk_score, risk_level, nist_function, audit_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                (audit_id, asset_id, title, description, owasp_category, likelihood, impact, risk_score, risk_level, nist_function, audit_status, recommendation)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             $stmt->execute([
-                $auditId, $assetId, $title, $description, $likelihood, 
-                $impact, $riskScore, $riskLevel, $nistFunction, $auditStatus
+                $auditId, $assetId, $title, $description, $owaspCategory ?: null,
+                $likelihood, $impact, $riskScore, $riskLevel, $nistFunction, $auditStatus,
+                $recommendation ?: null
             ]);
 
             $findingId = $pdo->lastInsertId();

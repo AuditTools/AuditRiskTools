@@ -35,6 +35,7 @@ $navClass = function ($pages) use ($currentPage) {
             <li class="nav-item"><a href="organizations.php" class="<?= $navClass(['organizations.php', 'audit_sessions.php']) ?>">Organizations</a></li>
             <?php if (!empty($_SESSION['active_audit_id'])): ?>
                 <li class="nav-item"><a href="asset_manage.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" class="<?= $navClass(['asset_manage.php']) ?>">Asset Management</a></li>
+                <li class="nav-item"><a href="vulnerability_assessment.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" class="<?= $navClass(['vulnerability_assessment.php']) ?>">Vuln Assessment</a></li>
                 <li class="nav-item"><a href="findings.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" class="<?= $navClass(['findings.php']) ?>">Findings</a></li>
                 <li class="nav-item"><a href="report.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" class="<?= $navClass(['report.php']) ?>">Report</a></li>
             <?php endif; ?>

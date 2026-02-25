@@ -61,20 +61,30 @@ function updateAuditMetrics($pdo, $auditId) {
     elseif ($final_risk_score >= 21) $final_risk_level = 'Medium';
     else $final_risk_level = 'Low';
 
-    // F. Save to database (Per PDF Schema, only stores Final Score & Level) 
+    // F. Calculate Compliance & Maturity (auto-update) 
+    $compliance = getComplianceAndMaturity($pdo, $auditId);
+
+    // G. Save to database (Final Score, Level, Compliance, Maturity) 
     $updateStmt = $pdo->prepare("
         UPDATE audit_sessions 
-        SET final_risk_score = ?, final_risk_level = ? 
+        SET final_risk_score = ?, final_risk_level = ?,
+            compliance_percentage = ?, nist_maturity_level = ?
         WHERE id = ?
     ");
-    $updateStmt->execute([$final_risk_score, $final_risk_level, $auditId]);
+    $updateStmt->execute([
+        $final_risk_score, $final_risk_level,
+        $compliance['percentage'], $compliance['maturity'],
+        $auditId
+    ]);
 
-    // G. Return data for Dashboard rendering
+    // H. Return data for Dashboard rendering
     return [
         'avg_asset_criticality' => round($avg_asset_criticality, 2),
         'avg_risk_score' => round($avg_risk_score, 2),
         'final_risk_score' => $final_risk_score,
-        'final_risk_level' => $final_risk_level
+        'final_risk_level' => $final_risk_level,
+        'compliance_percentage' => $compliance['percentage'],
+        'nist_maturity_level' => $compliance['maturity']
     ];
 }
 
