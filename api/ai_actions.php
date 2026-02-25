@@ -4,10 +4,13 @@
  * Handle AI report generation and chatbot interactions
  */
 
-// Suppress errors for clean JSON output
+// Suppress display errors but keep error logging
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
 ini_set('log_errors', 1);
+
+// Start output buffering
+ob_start();
 
 header('Content-Type: application/json');
 
@@ -16,6 +19,7 @@ $action = $_GET['action'] ?? '';
 
 // Test endpoint doesn't need authentication or database
 if ($action === 'test') {
+    ob_end_clean(); // Clear buffer before output
     try {
         require_once '../functions/ai_api.php';
         $result = testAIConnection();
@@ -34,6 +38,8 @@ session_start();
 require_once '../functions/db.php';
 require_once '../functions/auth.php';
 require_once '../functions/ai_api.php';
+
+ob_end_clean(); // Clear buffer after includes
 
 if (!isLoggedIn()) {
     echo json_encode(['success' => false, 'message' => 'Unauthorized']);

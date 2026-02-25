@@ -3,10 +3,18 @@
  * SRM-Audit - Organization Actions API
  * Handle CRUD operations for organizations
  */
+
+// Suppress display errors but keep error logging
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+ob_start();
+
 session_start();
 require_once '../functions/db.php';
 require_once '../functions/auth.php';
 
+ob_end_clean();
 header('Content-Type: application/json');
 
 // Check authentication

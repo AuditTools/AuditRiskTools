@@ -90,17 +90,28 @@ document.getElementById('auditForm').addEventListener('submit', function(e) {
         method: 'POST',
         body: formData
     })
-    .then(res => res.json())
+    .then(res => {
+        // Check response content type
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            // Not JSON, get text to see error
+            return res.text().then(text => {
+                console.error('Non-JSON response:', text);
+                throw new Error('Server returned non-JSON response. Check browser console.');
+            });
+        }
+        return res.json();
+    })
     .then(data => {
         if (data.success) {
             window.location.href = "dashboard.php?audit_id=" + data.audit_id;
         } else {
-            alert(data.message);
+            alert(data.message || 'Error creating audit session');
         }
     })
     .catch(err => {
-        console.error(err);
-        alert("Error creating audit session");
+        console.error('Error:', err);
+        alert(err.message || "Error creating audit session");
     });
 });
 </script>

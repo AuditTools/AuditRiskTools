@@ -23,7 +23,21 @@ try {
     // Log error
     error_log("Database Connection Error: " . $e->getMessage());
     
-    // Show error based on environment
+    // Check if this is an API request (return JSON)
+    $isApiRequest = strpos($_SERVER['REQUEST_URI'] ?? '', '/api/') !== false;
+    
+    if ($isApiRequest) {
+        // Output JSON error for API requests
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'message' => 'Database connection failed',
+            'error' => APP_DEBUG ? $e->getMessage() : 'Please check database configuration'
+        ]);
+        exit();
+    }
+    
+    // Show error based on environment (for web pages)
     if (APP_DEBUG) {
         die("
             <!DOCTYPE html>
