@@ -79,9 +79,6 @@ try {
             
             // Handle evidence file uploads
             if (!empty($_FILES['evidence_file']['name'][0])) {
-                require_once '../functions/owasp.php';
-                require_once '../functions/nist.php';
-                
                 $uploadDir = '../uploads/evidence/';
                 if (!is_dir($uploadDir)) {
                     mkdir($uploadDir, 0755, true);

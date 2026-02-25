@@ -51,6 +51,8 @@ $userId = $_SESSION['user_id'];
 try {
     switch ($action) {
         case 'generate_report':
+            $aiSchema = resolveAiReportsSchema($pdo);
+
             // Generate AI Audit Report
             $auditId = intval($_POST['audit_id']);
             
@@ -99,12 +101,13 @@ try {
             $reportContent = $result['report'];
             $aiProvider = $result['provider'];
             
-            // Save generated report to database (matching schema columns)
-            $stmt = $pdo->prepare("
-                INSERT INTO ai_reports (audit_session_id, report_type, report_content, model_used) 
-                VALUES (?, 'full_report', ?, ?)
-            ");
-            $stmt->execute([$auditId, $reportContent, $aiProvider]);
+            if ($aiSchema['report_type_col'] !== null) {
+                $stmt = $pdo->prepare("\n                    INSERT INTO ai_reports (`{$aiSchema['audit_col']}`, `{$aiSchema['report_type_col']}`, `{$aiSchema['content_col']}`, `{$aiSchema['model_col']}`) \n                    VALUES (?, 'full_report', ?, ?)\n                ");
+                $stmt->execute([$auditId, $reportContent, $aiProvider]);
+            } else {
+                $stmt = $pdo->prepare("\n                    INSERT INTO ai_reports (`{$aiSchema['audit_col']}`, `{$aiSchema['content_col']}`, `{$aiSchema['model_col']}`) \n                    VALUES (?, ?, ?)\n                ");
+                $stmt->execute([$auditId, $reportContent, $aiProvider]);
+            }
             
             $reportId = $pdo->lastInsertId();
             
@@ -167,13 +170,15 @@ try {
             break;
             
         case 'get_report':
+            $aiSchema = resolveAiReportsSchema($pdo);
+
             // Get saved AI report
             $reportId = intval($_GET['id']);
             
             $stmt = $pdo->prepare("
-                SELECT r.*, r.audit_session_id as audit_id
+                SELECT r.*, r.`{$aiSchema['audit_col']}` as audit_id
                 FROM ai_reports r
-                JOIN audit_sessions a ON r.audit_session_id = a.id
+                JOIN audit_sessions a ON r.`{$aiSchema['audit_col']}` = a.id
                 JOIN organizations o ON a.organization_id = o.id
                 WHERE r.id = ? AND o.user_id = ?
             ");
@@ -188,11 +193,13 @@ try {
             break;
             
         case 'list_reports':
+            $aiSchema = resolveAiReportsSchema($pdo);
+
             // List all reports for user
             $stmt = $pdo->prepare("
                 SELECT r.*, a.session_name, o.organization_name
                 FROM ai_reports r
-                JOIN audit_sessions a ON r.audit_session_id = a.id
+                JOIN audit_sessions a ON r.`{$aiSchema['audit_col']}` = a.id
                 JOIN organizations o ON a.organization_id = o.id
                 WHERE o.user_id = ?
                 ORDER BY r.created_at DESC
@@ -209,6 +216,39 @@ try {
     
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+}
+
+function resolveAiReportsSchema($pdo) {
+    static $schema = null;
+
+    if ($schema !== null) {
+        return $schema;
+    }
+
+    $stmt = $pdo->query("SHOW COLUMNS FROM ai_reports");
+    $columns = $stmt ? $stmt->fetchAll(PDO::FETCH_COLUMN) : [];
+
+    if (!$columns) {
+        throw new Exception('Table ai_reports not found or unreadable');
+    }
+
+    $auditCol = in_array('audit_session_id', $columns, true) ? 'audit_session_id' : (in_array('audit_id', $columns, true) ? 'audit_id' : null);
+    $contentCol = in_array('report_content', $columns, true) ? 'report_content' : (in_array('full_report', $columns, true) ? 'full_report' : null);
+    $modelCol = in_array('model_used', $columns, true) ? 'model_used' : (in_array('ai_model', $columns, true) ? 'ai_model' : null);
+    $reportTypeCol = in_array('report_type', $columns, true) ? 'report_type' : null;
+
+    if ($auditCol === null || $contentCol === null || $modelCol === null) {
+        throw new Exception('ai_reports schema is incompatible. Required columns are missing.');
+    }
+
+    $schema = [
+        'audit_col' => $auditCol,
+        'content_col' => $contentCol,
+        'model_col' => $modelCol,
+        'report_type_col' => $reportTypeCol,
+    ];
+
+    return $schema;
 }
 
 function logAction($pdo, $userId, $action, $table, $recordId) {

@@ -33,7 +33,7 @@ if ($audit_id > 0) {
     } else {
         $selectedOrgId = intval($access['organization_id']);
         $_SESSION['active_audit_id'] = $audit_id;
-        updateAuditMetrics($pdo, $audit_id, true);
+        updateAuditMetrics($pdo, $audit_id);
         $reportData = getReportData($pdo, $audit_id, $userId);
     }
 }
@@ -81,7 +81,7 @@ include 'includes/sidebar.php';
                     </select>
                 </div>
                 <div class="col-md-2 d-grid">
-                    <button class="btn btn-primary" type="submit">Buka</button>
+                    <button class="btn btn-primary" type="submit">Open</button>
                 </div>
             </form>
         </div>
@@ -109,10 +109,10 @@ include 'includes/sidebar.php';
             <h4>🔐 Audit Opinion</h4>
             <?php 
                 $opinion = calculateAuditOpinion($pdo, $audit_id);
-                $opinionColor = $opinion === 'Secure' ? 'success' : ($opinion === 'Acceptable Risk' ? 'warning' : 'danger');
+                $opinionClass = $opinion === 'Secure' ? 'badge-srm-success' : ($opinion === 'Acceptable Risk' ? 'badge-srm-warning' : 'badge-srm-danger');
             ?>
             <h3 class="text-center">
-                <span class="badge bg-<?= $opinionColor ?>" style="font-size: 1.1em;">
+                <span class="badge <?= $opinionClass ?>" style="font-size: 1.1em;">
                     <?= htmlspecialchars($opinion) ?>
                 </span>
             </h3>

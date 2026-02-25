@@ -168,8 +168,7 @@ function getRiskMatrixData($pdo, $auditId) {
     $stmt = $pdo->prepare("SELECT 
         likelihood,
         impact,
-        COUNT(*) as count,
-        risk_level
+        COUNT(*) as count
         FROM findings
         WHERE audit_id = ?
         GROUP BY likelihood, impact
@@ -189,9 +188,19 @@ function getRiskMatrixData($pdo, $auditId) {
     foreach ($findings as $row) {
         $l = (int)$row['likelihood'];
         $i = (int)$row['impact'];
+        $score = $l * $i;
+        if ($score >= 20) {
+            $level = 'Critical';
+        } elseif ($score >= 15) {
+            $level = 'High';
+        } elseif ($score >= 10) {
+            $level = 'Medium';
+        } else {
+            $level = 'Low';
+        }
         $matrix[$l][$i] = [
             'count' => (int)$row['count'],
-            'level' => $row['risk_level']
+            'level' => $level
         ];
     }
     
