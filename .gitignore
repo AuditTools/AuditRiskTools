@@ -28,3 +28,4 @@ cache/
 temp/
 .DS_Store
 /SETUP
+/test
