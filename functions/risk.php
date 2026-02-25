@@ -103,7 +103,7 @@ function calculateCriticalityLevel($score) {
 
 // 4. HELPER: Calculate Compliance & Maturity Indicator 
 function getComplianceAndMaturity($pdo, $auditId) {
-    // Per PDF formula: Total Compliant / Total Findings * 100
+    // --- Source 1: Findings-based compliance ---
     $stmt = $pdo->prepare("
         SELECT 
             SUM(CASE WHEN audit_status='Compliant' THEN 1 ELSE 0 END) as compliant_count,
@@ -113,11 +113,43 @@ function getComplianceAndMaturity($pdo, $auditId) {
     $stmt->execute([$auditId]);
     $res = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    $total = (int)$res['total'];
-    $compliant = (int)$res['compliant_count'];
-    
-    // If there are no findings yet, assume 100% compliant
-    $percentage = ($total > 0) ? round(($compliant / $total) * 100, 2) : 100.0;
+    $findingsTotal     = (int)$res['total'];
+    $findingsCompliant = (int)$res['compliant_count'];
+
+    // --- Source 2: NIST CSF Control Checklist compliance ---
+    $checklistPct = null; // null = no checklist data yet
+    $stmtCL = $pdo->prepare("
+        SELECT status, COUNT(*) as cnt 
+        FROM control_checklist 
+        WHERE audit_id = ? 
+        GROUP BY status
+    ");
+    $stmtCL->execute([$auditId]);
+    $clRows = $stmtCL->fetchAll(PDO::FETCH_KEY_PAIR);
+
+    $clTotal = array_sum($clRows);
+    if ($clTotal > 0) {
+        $clCompliant = (int)($clRows['Compliant'] ?? 0);
+        $clPartial   = (int)($clRows['Partially Compliant'] ?? 0);
+        $clNA        = (int)($clRows['Not Applicable'] ?? 0);
+        $clApplicable = $clTotal - $clNA;
+        if ($clApplicable > 0) {
+            $checklistPct = round((($clCompliant + $clPartial * 0.5) / $clApplicable) * 100, 2);
+        }
+    }
+
+    // --- Blend: weighted average if both exist, otherwise use what's available ---
+    if ($findingsTotal > 0 && $checklistPct !== null) {
+        $findingsPct = round(($findingsCompliant / $findingsTotal) * 100, 2);
+        // 40% findings + 60% checklist (checklist carries more weight as it covers full NIST)
+        $percentage = round($findingsPct * 0.4 + $checklistPct * 0.6, 2);
+    } elseif ($checklistPct !== null) {
+        $percentage = $checklistPct;
+    } elseif ($findingsTotal > 0) {
+        $percentage = round(($findingsCompliant / $findingsTotal) * 100, 2);
+    } else {
+        $percentage = 100.0;
+    }
 
     // Maturity Classification per PDF 
     if ($percentage <= 40) $maturity = 'Initial';

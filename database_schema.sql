@@ -402,6 +402,34 @@ Strategic indexes added for:
 */
 
 -- ====================================================
+-- 10️⃣ CONTROL CHECKLIST TABLE
+-- ====================================================
+-- Stores NIST CSF control audit results per audit session
+-- Auditor marks each control as Compliant / Partially / Non-Compliant / N/A
+-- ====================================================
+CREATE TABLE IF NOT EXISTS control_checklist (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    audit_id INT NOT NULL,
+    control_id VARCHAR(20) NOT NULL,
+
+    -- Compliance status
+    status ENUM('Not Assessed','Compliant','Partially Compliant','Non-Compliant','Not Applicable')
+        DEFAULT 'Not Assessed',
+
+    -- Auditor notes / evidence description
+    notes TEXT NULL,
+
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (audit_id) REFERENCES audit_sessions(id) ON DELETE CASCADE,
+    UNIQUE KEY uq_audit_control (audit_id, control_id),
+    INDEX idx_audit_id (audit_id),
+    INDEX idx_control_status (audit_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ====================================================
 -- INITIAL DATA (OPTIONAL)
 -- ====================================================
 
