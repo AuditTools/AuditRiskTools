@@ -77,6 +77,54 @@ try {
 
             $findingId = $pdo->lastInsertId();
             
+            // Handle evidence file uploads
+            if (!empty($_FILES['evidence_file']['name'][0])) {
+                require_once '../functions/owasp.php';
+                require_once '../functions/nist.php';
+                
+                $uploadDir = '../uploads/evidence/';
+                if (!is_dir($uploadDir)) {
+                    mkdir($uploadDir, 0755, true);
+                }
+                
+                $allowedMimes = ['image/jpeg', 'image/png', 'application/pdf', 
+                                 'application/msword', 
+                                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                 'application/vnd.ms-excel',
+                                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                 'text/plain'];
+                $maxSize = 10 * 1024 * 1024; // 10MB
+                
+                $fileCount = count($_FILES['evidence_file']['name']);
+                for ($i = 0; $i < $fileCount; $i++) {
+                    if (empty($_FILES['evidence_file']['name'][$i])) continue;
+                    
+                    $fileName = $_FILES['evidence_file']['name'][$i];
+                    $fileTmp = $_FILES['evidence_file']['tmp_name'][$i];
+                    $fileSize = $_FILES['evidence_file']['size'][$i];
+                    $fileType = $_FILES['evidence_file']['type'][$i];
+                    
+                    if ($fileSize > $maxSize) {
+                        continue; // Skip if too large
+                    }
+                    
+                    if (!in_array($fileType, $allowedMimes)) {
+                        continue; // Skip if not allowed
+                    }
+                    
+                    $fileExt = pathinfo($fileName, PATHINFO_EXTENSION);
+                    $storedFileName = 'evidence_' . $findingId . '_' . time() . '_' . uniqid() . '.' . $fileExt;
+                    $filePath = $uploadDir . $storedFileName;
+                    
+                    if (move_uploaded_file($fileTmp, $filePath)) {
+                        $stmt = $pdo->prepare("INSERT INTO audit_evidence
+                            (finding_id, audit_id, original_filename, stored_filename, file_path, file_type, file_size, evidence_type, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, 'Finding Evidence', NOW())");
+                        $stmt->execute([$findingId, $auditId, $fileName, $storedFileName, $filePath, $fileType, $fileSize]);
+                    }
+                }
+            }
+            
             // 3. Update dashboard metrics using Hybrid function (Removed the 'true' parameter)
             updateAuditMetrics($pdo, $auditId);
             

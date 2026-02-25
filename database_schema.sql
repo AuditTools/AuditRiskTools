@@ -22,6 +22,9 @@ CREATE TABLE users (
     email VARCHAR(150) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     
+    -- Role-based access control
+    role ENUM('admin', 'auditor', 'auditee') DEFAULT 'auditor',
+    
     -- Account status and security
     is_active TINYINT(1) DEFAULT 1,
     failed_login_attempts INT DEFAULT 0,
@@ -32,7 +35,8 @@ CREATE TABLE users (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
     INDEX idx_email (email),
-    INDEX idx_is_active (is_active)
+    INDEX idx_is_active (is_active),
+    INDEX idx_role (role)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ====================================================
@@ -229,6 +233,36 @@ CREATE TABLE findings (
     INDEX idx_risk_level (risk_level),
     INDEX idx_nist_function (nist_function),
     INDEX idx_audit_status (audit_status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ====================================================
+-- 7️⃣ AUDIT EVIDENCE TABLE
+-- ====================================================
+-- Stores evidence files (screenshots, docs, configs)
+-- Supports findings and findings audit evidence
+-- ====================================================
+CREATE TABLE audit_evidence (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    finding_id INT NOT NULL,
+    audit_id INT NOT NULL,
+    
+    -- File info
+    original_filename VARCHAR(255) NOT NULL,
+    stored_filename VARCHAR(255) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    file_type VARCHAR(50),
+    file_size INT,
+    
+    -- Evidence metadata
+    evidence_type ENUM('Screenshot','Document','Configuration','Policy','Other') DEFAULT 'Other',
+    description TEXT,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (finding_id) REFERENCES findings(id) ON DELETE CASCADE,
+    FOREIGN KEY (audit_id) REFERENCES audit_sessions(id) ON DELETE CASCADE,
+    INDEX idx_finding_id (finding_id),
+    INDEX idx_audit_id (audit_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ====================================================

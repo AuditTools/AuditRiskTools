@@ -105,6 +105,62 @@ include 'includes/sidebar.php';
             <p class="text-muted" id="aiSummaryText">Click the button to generate summary.</p>
         </div>
 
+        <div class="report-card">
+            <h4>🔐 Audit Opinion</h4>
+            <?php 
+                $opinion = calculateAuditOpinion($pdo, $audit_id);
+                $opinionColor = $opinion === 'Secure' ? 'success' : ($opinion === 'Acceptable Risk' ? 'warning' : 'danger');
+            ?>
+            <h3 class="text-center">
+                <span class="badge bg-<?= $opinionColor ?>" style="font-size: 1.1em;">
+                    <?= htmlspecialchars($opinion) ?>
+                </span>
+            </h3>
+            <p class="text-center text-muted">
+                Based on compliance (<?= number_format((float)($reportData['audit']['compliance_percentage'] ?? 0), 2) ?>%), 
+                risk level (<?= htmlspecialchars($reportData['audit']['final_risk_level'] ?? 'Low') ?>), 
+                and exposure (<?= htmlspecialchars($reportData['audit']['exposure_level'] ?? 'Low') ?>)
+            </p>
+        </div>
+
+        <div class="report-card">
+            <h4>Risk Matrix (Likelihood × Impact)</h4>
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">L\I</th>
+                        <?php for ($i = 1; $i <= 5; $i++): ?>
+                            <th style="text-align: center; width: 60px;">I<?= $i ?></th>
+                        <?php endfor; ?>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php 
+                        $matrix = getRiskMatrixData($pdo, $audit_id);
+                        for ($l = 5; $l >= 1; $l--):
+                    ?>
+                        <tr>
+                            <td><strong>L<?= $l ?></strong></td>
+                            <?php for ($i = 1; $i <= 5; $i++): 
+                                $cell = $matrix[$l][$i];
+                                $bgColor = $cell['level'] === 'Critical' ? '#ff6b6b' : 
+                                          ($cell['level'] === 'High' ? '#ffa94d' : 
+                                          ($cell['level'] === 'Medium' ? '#ffe066' : '#a8e6cf'));
+                                $count = $cell['count'];
+                            ?>
+                                <td style="background-color: <?= $bgColor ?>; text-align: center; font-weight: bold;">
+                                    <?= $count > 0 ? $count : '—' ?>
+                                </td>
+                            <?php endfor; ?>
+                        </tr>
+                    <?php endfor; ?>
+                </tbody>
+            </table>
+            <p class="text-muted text-center mt-2">
+                <small>🔴 Critical | 🟠 High | 🟡 Medium | 🟢 Low</small>
+            </p>
+        </div>
+
         <?= renderReportHtml($reportData) ?>
     <?php endif; ?>
 </div>

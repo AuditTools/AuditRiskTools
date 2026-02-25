@@ -2,6 +2,9 @@
 session_start();
 require_once 'functions/db.php';
 require_once 'functions/auth.php';
+require_once 'functions/risk.php';
+require_once 'functions/owasp.php';
+require_once 'functions/nist.php';
 
 requireLogin();
 
@@ -117,7 +120,7 @@ if ($audit_id) {
 
 <h5 class="mb-3">Add New Finding</h5>
 
-<form id="findingForm">
+<form id="findingForm" enctype="multipart/form-data">
 
 <input type="hidden" name="audit_id" value="<?= $audit_id ?>">
 <?= csrfTokenInput() ?>
@@ -137,13 +140,39 @@ if ($audit_id) {
 
     <div class="col-md-6">
         <label>NIST Function</label>
-        <select class="form-select" name="nist_function">
+        <select class="form-select" name="nist_function" id="nistFunctionSelect">
             <option>Identify</option>
             <option>Protect</option>
             <option>Detect</option>
             <option>Respond</option>
             <option>Recover</option>
         </select>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <label>OWASP Category</label>
+        <select class="form-select" name="owasp_category" id="owaspSelect">
+            <option value="">Select OWASP Issue (Optional)</option>
+            <?php 
+            $owaspLib = getOwaspLibrary();
+            foreach ($owaspLib as $owasp): 
+            ?>
+                <option value="<?= htmlspecialchars($owasp['title']) ?>" 
+                        data-cwe="<?= htmlspecialchars($owasp['cwe']) ?>"
+                        data-nist="<?= htmlspecialchars($owasp['nist_function']) ?>">
+                    <?= htmlspecialchars($owasp['title']) ?> (CWE: <?= htmlspecialchars($owasp['cwe']) ?>)
+                </option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+
+    <div class="col-md-6">
+        <label>Recommended NIST Controls</label>
+        <div id="nistControlsList" class="border p-2 bg-light" style="max-height: 150px; overflow-y: auto;">
+            <small class="text-muted">Select NIST Function above to see controls</small>
+        </div>
     </div>
 </div>
 
@@ -169,6 +198,12 @@ if ($audit_id) {
 <div class="mb-3">
     <label>Recommendation</label>
     <textarea name="recommendation" class="form-control" rows="2" placeholder="Suggested remediation action..."></textarea>
+</div>
+
+<div class="mb-3">
+    <label>Evidence Files</label>
+    <input type="file" name="evidence_file" class="form-control" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx,.txt" multiple>
+    <small class="text-muted d-block mt-1">Upload evidence: images, PDF, Word, Excel, or text files (Max 10MB each)</small>
 </div>
 
 <div class="row mb-3">
@@ -282,6 +317,64 @@ if ($audit_id) {
                 </form>
             </td>
         </tr>
+        <tr>
+            <td colspan="8">
+                <details>
+                    <summary class="cursor-pointer" style="cursor: pointer;">
+                        <strong>Evidence Files</strong> 
+                        <?php 
+                        // Retrieve evidence count
+                        $stmtEv = $pdo->prepare("SELECT COUNT(*) as count FROM audit_evidence WHERE finding_id = ?");
+                        $stmtEv->execute([$f['id']]);
+                        $eviCount = $stmtEv->fetch(PDO::FETCH_ASSOC)['count'];
+                        echo '(' . $eviCount . ')';
+                        ?>
+                    </summary>
+                    <div class="p-3 bg-light mt-2">
+                        <?php
+                        // Fetch evidence for this finding
+                        $stmtEvi = $pdo->prepare("SELECT id, original_filename, stored_filename, file_path, evidence_type, created_at FROM audit_evidence WHERE finding_id = ? ORDER BY created_at DESC");
+                        $stmtEvi->execute([$f['id']]);
+                        $evidence = $stmtEvi->fetchAll(PDO::FETCH_ASSOC);
+                        
+                        if (count($evidence) > 0):
+                        ?>
+                            <table class="table table-sm">
+                                <thead><tr><th>File</th><th>Type</th><th>Uploaded</th><th>Action</th></tr></thead>
+                                <tbody>
+                                    <?php foreach ($evidence as $evi): ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($evi['original_filename']) ?></td>
+                                        <td><small><?= htmlspecialchars($evi['evidence_type']) ?></small></td>
+                                        <td><small><?= date('M d, Y', strtotime($evi['created_at'])) ?></small></td>
+                                        <td>
+                                            <a href="<?= htmlspecialchars($evi['file_path']) ?>" class="btn btn-sm btn-outline-info" target="_blank">
+                                                View
+                                            </a>
+                                            <button class="btn btn-sm btn-outline-danger deleteEviBtn" data-evi-id="<?= intval($evi['id']) ?>">
+                                                Delete
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        <?php else: ?>
+                            <p class="text-muted">No evidence files uploaded yet.</p>
+                        <?php endif; ?>
+                        
+                        <hr>
+                        <form class="evidenceUploadForm" enctype="multipart/form-data" data-finding-id="<?= intval($f['id']) ?>">
+                            <input type="hidden" name="finding_id" value="<?= intval($f['id']) ?>">
+                            <input type="hidden" name="audit_id" value="<?= intval($audit_id) ?>">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCSRFToken()) ?>">
+                            <input type="file" name="evidence_file" class="form-control form-control-sm mb-2" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx,.txt" multiple>
+                            <button type="submit" class="btn btn-sm btn-primary">Upload Evidence</button>
+                        </form>
+                    </div>
+                </details>
+            </td>
+        </tr>
     <?php endforeach; ?>
 <?php else: ?>
     <tr>
@@ -366,6 +459,31 @@ impact.addEventListener('input', () => {
     updateRisk();
 });
 
+// NIST Controls mapping
+const nistControlsData = <?php echo json_encode(getNistControlsChecklist()); ?>;
+
+function updateNistControls() {
+    const nistFunction = document.getElementById('nistFunctionSelect').value;
+    const nistControlsList = document.getElementById('nistControlsList');
+    
+    if (nistFunction && nistControlsData[nistFunction]) {
+        const controls = nistControlsData[nistFunction];
+        nistControlsList.innerHTML = controls.map(ctrl => 
+            `<div class="form-check">
+                <input class="form-check-input" type="checkbox" id="control_${ctrl.id}" value="${ctrl.id}" name="nist_controls">
+                <label class="form-check-label" for="control_${ctrl.id}">
+                    <small><strong>${ctrl.control_id}:</strong> ${ctrl.description}</small>
+                </label>
+            </div>`
+        ).join('');
+    } else {
+        nistControlsList.innerHTML = '<small class="text-muted">Select NIST Function above to see controls</small>';
+    }
+}
+
+document.getElementById('nistFunctionSelect').addEventListener('change', updateNistControls);
+updateNistControls();
+
 document.getElementById('findingForm').addEventListener('submit', function(e) {
     e.preventDefault();
 
@@ -406,6 +524,55 @@ document.querySelectorAll('.remediationForm').forEach((form) => {
             }
         })
         .catch(() => alert('Error updating remediation'));
+    });
+});
+
+// Evidence upload handlers
+document.querySelectorAll('.evidenceUploadForm').forEach((form) => {
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const formData = new FormData(this);
+
+        fetch('api/evidence_actions.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.message || 'Error uploading evidence');
+            }
+        })
+        .catch(() => alert('Error uploading evidence'));
+    });
+});
+
+// Evidence delete handlers
+document.querySelectorAll('.deleteEviBtn').forEach((btn) => {
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        if (!confirm('Delete this evidence file?')) return;
+        
+        const eviId = this.dataset.eviId;
+        
+        fetch('api/evidence_actions.php?action=delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: eviId, csrf_token: '<?= htmlspecialchars(generateCSRFToken()) ?>' })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.message || 'Error deleting evidence');
+            }
+        })
+        .catch(() => alert('Error deleting evidence'));
     });
 });
 <?php endif; ?>
