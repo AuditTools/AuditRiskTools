@@ -18,6 +18,16 @@ include 'includes/header.php';
 include 'includes/sidebar.php';
 ?>
 
+<style>
+    .audit-count-badge {
+        background: #495057;
+        color: #f8f9fa;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        font-weight: 600;
+        min-width: 28px;
+    }
+</style>
+
 <h2 class="mb-4">Organizations</h2>
 
 <div class="card mb-4 shadow-sm">
@@ -88,9 +98,9 @@ include 'includes/sidebar.php';
                 <tr>
                     <td><?= htmlspecialchars($org['organization_name']) ?></td>
                     <td><?= htmlspecialchars($org['industry']) ?></td>
-                    <td><?= $org['number_of_employees'] ? number_format(intval($org['number_of_employees'])) : '<span class="text-muted">—</span>' ?></td>
+                    <td><?= !empty($org['number_of_employees']) ? number_format(intval($org['number_of_employees'])) : '<span class="text-muted">—</span>' ?></td>
                     <td><?= !empty($org['system_type']) ? htmlspecialchars($org['system_type']) : '<span class="text-muted">—</span>' ?></td>
-                    <td><span class="badge bg-info"><?= intval($org['audit_count']) ?></span></td>
+                    <td><span class="badge audit-count-badge"><?= intval($org['audit_count']) ?></span></td>
                     <td>
                         <a href="audit_sessions.php?org_id=<?= intval($org['id']) ?>" class="btn btn-sm btn-dark">
                             Create Audit Sessions

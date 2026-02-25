@@ -230,4 +230,82 @@ function logSecurityEvent($pdo, $userId, $event, $details = '') {
         error_log("Failed to log security event: " . $e->getMessage());
     }
 }
+
+/**
+ * Get user role
+ */
+function getUserRole($userId = null) {
+    global $pdo;
+    
+    if ($userId === null) {
+        $userId = $_SESSION['user_id'] ?? null;
+    }
+    
+    if (!$userId) {
+        return null;
+    }
+    
+    $stmt = $pdo->prepare("SELECT role FROM users WHERE id = ?");
+    $stmt->execute([$userId]);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    return $result['role'] ?? null;
+}
+
+/**
+ * Check if user has specific role
+ */
+function hasRole($requiredRole, $userId = null) {
+    $userRole = getUserRole($userId);
+    return $userRole === $requiredRole;
+}
+
+/**
+ * Check if user is admin
+ */
+function isAdmin($userId = null) {
+    return hasRole('admin', $userId);
+}
+
+/**
+ * Check if user is auditor
+ */
+function isAuditor($userId = null) {
+    return hasRole('auditor', $userId);
+}
+
+/**
+ * Check if user is auditee
+ */
+function isAuditee($userId = null) {
+    return hasRole('auditee', $userId);
+}
+
+/**
+ * Require admin role (redirect if not)
+ */
+function requireAdmin() {
+    if (!isLoggedIn()) {
+        header('Location: login.php');
+        exit();
+    }
+    if (!isAdmin()) {
+        http_response_code(403);
+        die('Access denied. Admin role required.');
+    }
+}
+
+/**
+ * Require auditor role (redirect if not)
+ */
+function requireAuditor() {
+    if (!isLoggedIn()) {
+        header('Location: login.php');
+        exit();
+    }
+    if (!isAuditor() && !isAdmin()) {
+        http_response_code(403);
+        die('Access denied. Auditor role required.');
+    }
+}
 ?>

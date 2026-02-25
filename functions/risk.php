@@ -159,4 +159,83 @@ function getComplianceAndMaturity($pdo, $auditId) {
 
     return ['percentage' => $percentage, 'maturity' => $maturity];
 }
+
+// 5. HELPER: Calculate Audit Opinion (P0)
+function calculateAuditOpinion($pdo, $auditId) {
+    $stmt = $pdo->prepare("SELECT 
+        compliance_percentage,
+        final_risk_level,
+        exposure_level
+        FROM audit_sessions WHERE id = ?");
+    $stmt->execute([$auditId]);
+    $audit = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$audit) {
+        return 'Unknown';
+    }
+    
+    $compliance = (float)$audit['compliance_percentage'];
+    $risk = $audit['final_risk_level'];
+    $exposure = $audit['exposure_level'];
+    
+    // Opinion Logic:
+    // 1. If compliance >= 80% AND risk <= Medium AND exposure <= Medium → "Secure"
+    // 2. If compliance >= 60% AND risk <= High AND exposure <= High → "Acceptable Risk" 
+    // 3. Otherwise → "Needs Action"
+    
+    if ($compliance >= 80 && $risk !== 'Critical' && $exposure !== 'High') {
+        return 'Secure';
+    }
+    
+    if ($compliance >= 60 && $risk !== 'Critical') {
+        return 'Acceptable Risk';
+    }
+    
+    return 'Needs Action';
+}
+
+// 6. HELPER: Build Risk Matrix data for visualization
+function getRiskMatrixData($pdo, $auditId) {
+    // Query findings by risk level and likelihood x impact grid
+    $stmt = $pdo->prepare("SELECT 
+        likelihood,
+        impact,
+        COUNT(*) as count
+        FROM findings
+        WHERE audit_id = ?
+        GROUP BY likelihood, impact
+        ORDER BY likelihood, impact");
+    $stmt->execute([$auditId]);
+    $findings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Build 5x5 matrix (rows=likelihood, cols=impact)
+    $matrix = [];
+    for ($l = 1; $l <= 5; $l++) {
+        $matrix[$l] = [];
+        for ($i = 1; $i <= 5; $i++) {
+            $matrix[$l][$i] = ['count' => 0, 'level' => 'Low'];
+        }
+    }
+    
+    foreach ($findings as $row) {
+        $l = (int)$row['likelihood'];
+        $i = (int)$row['impact'];
+        $score = $l * $i;
+        if ($score >= 20) {
+            $level = 'Critical';
+        } elseif ($score >= 15) {
+            $level = 'High';
+        } elseif ($score >= 10) {
+            $level = 'Medium';
+        } else {
+            $level = 'Low';
+        }
+        $matrix[$l][$i] = [
+            'count' => (int)$row['count'],
+            'level' => $level
+        ];
+    }
+    
+    return $matrix;
+}
 ?>

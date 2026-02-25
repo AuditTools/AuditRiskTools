@@ -73,7 +73,7 @@ if ($audit_id > 0) {
                     </select>
                 </div>
                 <div class="col-md-2 d-grid">
-                    <button class="btn btn-primary" type="submit">Buka</button>
+                    <button class="btn btn-primary" type="submit">Open</button>
                 </div>
             </form>
         </div>
@@ -163,7 +163,18 @@ if ($audit_id > 0) {
                     </td>
                     <td><?= $asset['criticality_score'] ?></td>
                     <td>
-                        <span class="badge bg-info">
+                        <?php
+                        $criticalityLevel = $asset['criticality_level'] ?? 'Low';
+                        $criticalityBadgeClass = 'badge-srm-info';
+                        if ($criticalityLevel === 'Critical' || $criticalityLevel === 'High') {
+                            $criticalityBadgeClass = 'badge-srm-danger';
+                        } elseif ($criticalityLevel === 'Medium') {
+                            $criticalityBadgeClass = 'badge-srm-warning';
+                        } elseif ($criticalityLevel === 'Low') {
+                            $criticalityBadgeClass = 'badge-srm-success';
+                        }
+                        ?>
+                        <span class="badge <?= $criticalityBadgeClass ?>">
                             <?= $asset['criticality_level'] ?>
                         </span>
                     </td>

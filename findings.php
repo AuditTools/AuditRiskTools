@@ -2,6 +2,8 @@
 session_start();
 require_once 'functions/db.php';
 require_once 'functions/auth.php';
+require_once 'functions/risk.php';
+require_once 'functions/owasp.php';
 
 requireLogin();
 
@@ -62,6 +64,14 @@ if ($audit_id) {
     $stmt2->execute([$audit_id]);
     $findings = $stmt2->fetchAll(PDO::FETCH_ASSOC);
 }
+
+$hasEvidenceTable = false;
+try {
+    $stmtEvidenceTable = $pdo->query("SHOW TABLES LIKE 'audit_evidence'");
+    $hasEvidenceTable = $stmtEvidenceTable && $stmtEvidenceTable->fetch() ? true : false;
+} catch (Exception $e) {
+    $hasEvidenceTable = false;
+}
 ?>
 
 <?php include 'includes/header.php'; ?>
@@ -98,7 +108,7 @@ if ($audit_id) {
         </select>
     </div>
     <div class="col-md-2 d-grid">
-        <button class="btn btn-primary" type="submit">Buka</button>
+        <button class="btn btn-primary" type="submit">Open</button>
     </div>
 </form>
 </div>
@@ -117,7 +127,7 @@ if ($audit_id) {
 
 <h5 class="mb-3">Add New Finding</h5>
 
-<form id="findingForm">
+<form id="findingForm" enctype="multipart/form-data">
 
 <input type="hidden" name="audit_id" value="<?= $audit_id ?>">
 <?= csrfTokenInput() ?>
@@ -137,12 +147,31 @@ if ($audit_id) {
 
     <div class="col-md-6">
         <label>NIST Function</label>
-        <select class="form-select" name="nist_function">
+        <select class="form-select" name="nist_function" id="nistFunctionSelect">
             <option>Identify</option>
             <option>Protect</option>
             <option>Detect</option>
             <option>Respond</option>
             <option>Recover</option>
+        </select>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <label>OWASP Category</label>
+        <select class="form-select" name="owasp_category" id="owaspSelect">
+            <option value="">Select OWASP Issue (Optional)</option>
+            <?php 
+            $owaspLib = getOwaspLibrary();
+            foreach ($owaspLib as $owasp): 
+            ?>
+                <option value="<?= htmlspecialchars($owasp['title']) ?>" 
+                        data-cwe="<?= htmlspecialchars($owasp['cwe']) ?>"
+                        data-nist="<?= htmlspecialchars($owasp['nist_function']) ?>">
+                    <?= htmlspecialchars($owasp['title']) ?> (CWE: <?= htmlspecialchars($owasp['cwe']) ?>)
+                </option>
+            <?php endforeach; ?>
         </select>
     </div>
 </div>
@@ -169,6 +198,12 @@ if ($audit_id) {
 <div class="mb-3">
     <label>Recommendation</label>
     <textarea name="recommendation" class="form-control" rows="2" placeholder="Suggested remediation action..."></textarea>
+</div>
+
+<div class="mb-3">
+    <label>Evidence Files</label>
+    <input type="file" name="evidence_file" class="form-control" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx,.txt" multiple>
+    <small class="text-muted d-block mt-1">Upload evidence: images, PDF, Word, Excel, or text files (Max 10MB each)</small>
 </div>
 
 <div class="row mb-3">
@@ -199,7 +234,7 @@ if ($audit_id) {
 
 <div class="alert alert-secondary">
     Risk Score:
-    <span id="riskBadge" class="badge bg-success">1</span>
+    <span id="riskBadge" class="badge badge-srm-success">1</span>
 </div>
 
 <button type="submit" class="btn btn-danger">
@@ -247,13 +282,22 @@ if ($audit_id) {
             <td><?= htmlspecialchars($f['title']) ?></td>
             <td>
                 <?php if (!empty($f['owasp_category'])): ?>
-                    <span class="badge bg-info"><?= htmlspecialchars($f['owasp_category']) ?></span>
+                    <span class="badge badge-srm-info"><?= htmlspecialchars($f['owasp_category']) ?></span>
                 <?php else: ?>
                     <span class="text-muted">—</span>
-                <?php endif; ?>
+                <?php
+                endif;
+                $riskScore = (int)($f['risk_score'] ?? 0);
+                $riskScoreBadgeClass = 'badge-srm-success';
+                if ($riskScore >= 13) {
+                    $riskScoreBadgeClass = 'badge-srm-danger';
+                } elseif ($riskScore >= 6) {
+                    $riskScoreBadgeClass = 'badge-srm-warning';
+                }
+                ?>
             </td>
             <td>
-                <span class="badge bg-danger">
+                <span class="badge <?= $riskScoreBadgeClass ?>">
                     <?= $f['risk_score'] ?>
                 </span>
             </td>
@@ -280,6 +324,74 @@ if ($audit_id) {
                     <input type="date" name="remediation_deadline" value="<?= htmlspecialchars($f['remediation_deadline'] ?? '') ?>" class="form-control form-control-sm">
                     <button type="submit" class="btn btn-sm btn-outline-primary">Save</button>
                 </form>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="8">
+                <details>
+                    <summary class="cursor-pointer" style="cursor: pointer;">
+                        <strong>Evidence Files</strong> 
+                        <?php if ($hasEvidenceTable): ?>
+                            <?php 
+                            // Retrieve evidence count
+                            $stmtEv = $pdo->prepare("SELECT COUNT(*) as count FROM audit_evidence WHERE finding_id = ?");
+                            $stmtEv->execute([$f['id']]);
+                            $eviCount = $stmtEv->fetch(PDO::FETCH_ASSOC)['count'];
+                            echo '(' . $eviCount . ')';
+                            ?>
+                        <?php else: ?>
+                            <span class="text-muted">(table belum dibuat)</span>
+                        <?php endif; ?>
+                    </summary>
+                    <div class="p-3 bg-light mt-2">
+                        <?php if (!$hasEvidenceTable): ?>
+                            <div class="alert alert-warning mb-2">
+                                Fitur evidence belum aktif karena tabel <strong>audit_evidence</strong> belum ada di database. Import ulang <strong>database_schema.sql</strong> atau jalankan migration tabel tersebut.
+                            </div>
+                        <?php else: ?>
+                            <?php
+                            // Fetch evidence for this finding
+                            $stmtEvi = $pdo->prepare("SELECT id, original_filename, stored_filename, file_path, evidence_type, created_at FROM audit_evidence WHERE finding_id = ? ORDER BY created_at DESC");
+                            $stmtEvi->execute([$f['id']]);
+                            $evidence = $stmtEvi->fetchAll(PDO::FETCH_ASSOC);
+                            
+                            if (count($evidence) > 0):
+                            ?>
+                            <table class="table table-sm">
+                                <thead><tr><th>File</th><th>Type</th><th>Uploaded</th><th>Action</th></tr></thead>
+                                <tbody>
+                                    <?php foreach ($evidence as $evi): ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($evi['original_filename']) ?></td>
+                                        <td><small><?= htmlspecialchars($evi['evidence_type']) ?></small></td>
+                                        <td><small><?= date('M d, Y', strtotime($evi['created_at'])) ?></small></td>
+                                        <td>
+                                            <a href="<?= htmlspecialchars($evi['file_path']) ?>" class="btn btn-sm btn-outline-info" target="_blank">
+                                                View
+                                            </a>
+                                            <button class="btn btn-sm btn-outline-danger deleteEviBtn" data-evi-id="<?= intval($evi['id']) ?>">
+                                                Delete
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                            <?php else: ?>
+                                <p class="text-muted">No evidence files uploaded yet.</p>
+                            <?php endif; ?>
+                            
+                            <hr>
+                            <form class="evidenceUploadForm" enctype="multipart/form-data" data-finding-id="<?= intval($f['id']) ?>">
+                                <input type="hidden" name="finding_id" value="<?= intval($f['id']) ?>">
+                                <input type="hidden" name="audit_id" value="<?= intval($audit_id) ?>">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCSRFToken()) ?>">
+                                <input type="file" name="evidence_file" class="form-control form-control-sm mb-2" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx,.txt" multiple>
+                                <button type="submit" class="btn btn-sm btn-primary">Upload Evidence</button>
+                            </form>
+                        <?php endif; ?>
+                    </div>
+                </details>
             </td>
         </tr>
     <?php endforeach; ?>
@@ -349,9 +461,9 @@ function updateRisk() {
     const risk = likelihood.value * impact.value;
     riskBadge.textContent = risk;
 
-    let color = "bg-success";
-    if (risk >= 6)  color = "bg-warning";
-    if (risk >= 13) color = "bg-danger";
+    let color = "badge-srm-success";
+    if (risk >= 6)  color = "badge-srm-warning";
+    if (risk >= 13) color = "badge-srm-danger";
 
     riskBadge.className = "badge " + color;
 }
@@ -406,6 +518,55 @@ document.querySelectorAll('.remediationForm').forEach((form) => {
             }
         })
         .catch(() => alert('Error updating remediation'));
+    });
+});
+
+// Evidence upload handlers
+document.querySelectorAll('.evidenceUploadForm').forEach((form) => {
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const formData = new FormData(this);
+
+        fetch('api/evidence_actions.php', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.message || 'Error uploading evidence');
+            }
+        })
+        .catch(() => alert('Error uploading evidence'));
+    });
+});
+
+// Evidence delete handlers
+document.querySelectorAll('.deleteEviBtn').forEach((btn) => {
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        if (!confirm('Delete this evidence file?')) return;
+        
+        const eviId = this.dataset.eviId;
+        
+        fetch('api/evidence_actions.php?action=delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: eviId, csrf_token: '<?= htmlspecialchars(generateCSRFToken()) ?>' })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.message || 'Error deleting evidence');
+            }
+        })
+        .catch(() => alert('Error deleting evidence'));
     });
 });
 <?php endif; ?>

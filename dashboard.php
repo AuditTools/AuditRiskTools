@@ -100,10 +100,10 @@ include 'includes/sidebar.php';
                 </div>
                 <hr>
                 <div class="row text-center">
-                    <div class="col-md-3"><div class="badge bg-primary p-2">Assets: <?php echo $assetCount; ?></div></div>
-                    <div class="col-md-3"><div class="badge bg-danger p-2">Findings: <?php echo $findingCount; ?></div></div>
-                    <div class="col-md-3"><div class="badge bg-secondary p-2">Status: <?php echo htmlspecialchars($audit['status'] ?? 'Planning'); ?></div></div>
-                    <div class="col-md-3"><div class="badge bg-dark p-2">NIST Maturity: <?php echo htmlspecialchars($audit['nist_maturity_level'] ?? 'Initial'); ?></div></div>
+                    <div class="col-md-3"><div class="badge badge-srm-accent p-2">Assets: <?php echo $assetCount; ?></div></div>
+                    <div class="col-md-3"><div class="badge badge-srm-danger p-2">Findings: <?php echo $findingCount; ?></div></div>
+                    <div class="col-md-3"><div class="badge badge-srm-muted p-2">Status: <?php echo htmlspecialchars($audit['status'] ?? 'Planning'); ?></div></div>
+                    <div class="col-md-3"><div class="badge badge-srm-neutral p-2">NIST Maturity: <?php echo htmlspecialchars($audit['nist_maturity_level'] ?? 'Initial'); ?></div></div>
                 </div>
             </div>
         </div>
@@ -161,7 +161,16 @@ include 'includes/sidebar.php';
                         <?php foreach ($topRisks as $risk): ?>
                             <tr>
                                 <td><?php echo htmlspecialchars($risk['title']); ?></td>
-                                <td><span class="badge bg-danger"><?php echo htmlspecialchars($risk['risk_score']); ?></span></td>
+                                <?php
+                                $topRiskScore = (int)($risk['risk_score'] ?? 0);
+                                $topRiskBadgeClass = 'badge-srm-success';
+                                if ($topRiskScore >= 13) {
+                                    $topRiskBadgeClass = 'badge-srm-danger';
+                                } elseif ($topRiskScore >= 6) {
+                                    $topRiskBadgeClass = 'badge-srm-warning';
+                                }
+                                ?>
+                                <td><span class="badge <?= $topRiskBadgeClass ?>"><?php echo htmlspecialchars($risk['risk_score']); ?></span></td>
                                 <td><?php echo htmlspecialchars($risk['nist_function']); ?></td>
                             </tr>
                         <?php endforeach; ?>

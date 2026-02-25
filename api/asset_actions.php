@@ -75,7 +75,7 @@ try {
             $assetId = $pdo->lastInsertId();
             
             // Update audit summary metrics
-            updateAuditCriticality($pdo, $auditId);
+            updateAuditMetrics($pdo, $auditId);
             
             logAction($pdo, $userId, 'ADD_ASSET', 'assets', $assetId);
             
@@ -145,7 +145,7 @@ try {
             ]);
             
             // Update audit summary metrics
-            updateAuditCriticality($pdo, $asset['audit_id']);
+            updateAuditMetrics($pdo, $asset['audit_id']);
             
             logAction($pdo, $userId, 'UPDATE_ASSET', 'assets', $assetId);
             
@@ -179,7 +179,7 @@ try {
             $stmt->execute([$assetId]);
             
             // Update audit summary metrics
-            updateAuditCriticality($pdo, $asset['audit_id']);
+            updateAuditMetrics($pdo, $asset['audit_id']);
             
             logAction($pdo, $userId, 'DELETE_ASSET', 'assets', $assetId);
             
@@ -237,6 +237,10 @@ try {
 
 function updateAuditCriticality($pdo, $auditId) {
     updateAuditMetrics($pdo, $auditId);
+}
+
+function calculateAssetCriticality($c, $i, $a) {
+    return round(($c + $i + $a) / 3, 2);
 }
 
 function logAction($pdo, $userId, $action, $table, $recordId) {
