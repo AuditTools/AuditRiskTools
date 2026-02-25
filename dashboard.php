@@ -2,7 +2,6 @@
 session_start();
 require_once 'functions/db.php';
 require_once 'functions/auth.php';
-
 requireLogin();
 
 $userId = $_SESSION['user_id'];
@@ -222,5 +221,12 @@ document.getElementById('auditSwitcher').addEventListener('submit', function (ev
     }
 });
 </script>
+
+<?php 
+// Include chatbot widget (only for logged-in users)
+if (file_exists('includes/chatbot.html')) {
+    readfile('includes/chatbot.html');
+}
+?>
 
 <?php include 'includes/footer.php'; ?>

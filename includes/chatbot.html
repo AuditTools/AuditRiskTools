@@ -181,9 +181,9 @@
                 <div class="chat-body" id="chatMessages">
                     <div class="message bot">
                         <div class="message-bubble">
-                            <strong>👋 Hello!</strong><br>
+                            <strong>👋 Hello!</strong>
                             I'm your GRC Assistant. I can help explain audit concepts, frameworks, and methodologies.
-                            <br><br>
+                        
                             <small class="text-muted">Try asking: "What is NIST CSF?" or "How to assess impact?"</small>
                         </div>
                     </div>
@@ -250,7 +250,8 @@
             
             const response = await fetch('/AuditRiskTools/api/ai_actions.php?action=chatbot', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                credentials: 'include' // Include session cookies for authentication
             });
             
             const result = await response.json();
@@ -309,67 +310,6 @@
         // chatMessages.innerHTML = ''; // Uncomment to clear on close
     });
 </script>
-
-<!-- DEMO: Page Content (Remove in production) -->
-<div class="container mt-5">
-    <div class="row">
-        <div class="col-lg-8 mx-auto">
-            <div class="card">
-                <div class="card-body">
-                    <h1 class="card-title">
-                        <i class="bi bi-robot text-primary"></i>
-                        AI Chatbot Demo
-                    </h1>
-                    <p class="card-text">
-                        This is a demo page for the SRM-Audit AI Chatbot feature.
-                        Click the purple button in the bottom-right corner to start chatting!
-                    </p>
-                    
-                    <hr>
-                    
-                    <h5>Features:</h5>
-                    <ul>
-                        <li>✅ Floating chat button</li>
-                        <li>✅ Bootstrap modal interface</li>
-                        <li>✅ Quick question buttons</li>
-                        <li>✅ Typing indicator</li>
-                        <li>✅ Message history</li>
-                        <li>✅ Error handling</li>
-                        <li>✅ Character limit (500)</li>
-                        <li>✅ Smooth animations</li>
-                    </ul>
-                    
-                    <hr>
-                    
-                    <h5>Sample Questions:</h5>
-                    <div class="list-group">
-                        <div class="list-group-item">
-                            <strong>Q:</strong> What is the CIA triad?
-                        </div>
-                        <div class="list-group-item">
-                            <strong>Q:</strong> Explain NIST Protect function
-                        </div>
-                        <div class="list-group-item">
-                            <strong>Q:</strong> How to calculate risk score?
-                        </div>
-                        <div class="list-group-item">
-                            <strong>Q:</strong> What is likelihood in risk assessment?
-                        </div>
-                        <div class="list-group-item">
-                            <strong>Q:</strong> Difference between vulnerability and threat?
-                        </div>
-                    </div>
-                    
-                    <div class="alert alert-info mt-4">
-                        <i class="bi bi-info-circle"></i>
-                        <strong>Note:</strong> Make sure you've configured the OpenAI API key in 
-                        <code>functions/ai_api.php</code> for this to work.
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 
 </body>
 </html>

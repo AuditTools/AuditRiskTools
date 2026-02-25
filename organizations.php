@@ -69,7 +69,7 @@ include 'includes/sidebar.php';
                     <td><span class="badge bg-info"><?= intval($org['audit_count']) ?></span></td>
                     <td>
                         <a href="audit_sessions.php?org_id=<?= intval($org['id']) ?>" class="btn btn-sm btn-dark">
-                            Open
+                            Create Audit Sessions
                         </a>
                     </td>
                 </tr>

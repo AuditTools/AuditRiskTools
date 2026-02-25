@@ -1,7 +1,7 @@
 <?php
 /**
  * SRM-Audit - AI Integration with Multi-Provider Support
- * Supports: Gemini (free), OpenAI (paid), Ollama (local)
+ * Supports: Gemini (free)
  * Configuration via .env file
  */
 
@@ -19,10 +19,6 @@ function callAI($prompt, $maxTokens = 1000) {
     switch (AI_PROVIDER) {
         case 'gemini':
             return callGeminiAPI($prompt, $maxTokens);
-        case 'openai':
-            return callOpenAI($prompt, $maxTokens);
-        case 'ollama':
-            return callOllamaAPI($prompt, $maxTokens);
         default:
             throw new Exception("Invalid AI provider in .env: " . AI_PROVIDER);
     }
@@ -98,110 +94,6 @@ function callGeminiAPI($prompt, $maxTokens = 1000) {
     }
     
     throw new Exception("Unexpected Gemini API response format");
-}
-
-// ==============================================
-// OPENAI API (PAID)
-// ==============================================
-
-/**
- * OpenAI API Integration
- * Get API key from: https://platform.openai.com/api-keys
- */
-function callOpenAI($prompt, $maxTokens = 1000) {
-    if (empty(OPENAI_API_KEY)) {
-        throw new Exception("OpenAI API key not configured. Add OPENAI_API_KEY to .env file");
-    }
-    
-    $data = [
-        'model' => OPENAI_MODEL,
-        'messages' => [
-            ['role' => 'user', 'content' => $prompt]
-        ],
-        'max_tokens' => $maxTokens,
-        'temperature' => 0.7
-    ];
-    
-    $ch = curl_init(OPENAI_API_URL);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json',
-        'Authorization: Bearer ' . OPENAI_API_KEY
-    ]);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-    
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error = curl_error($ch);
-    curl_close($ch);
-    
-    if ($error) {
-        throw new Exception("CURL Error: $error");
-    }
-    
-    if ($httpCode !== 200) {
-        $errorData = json_decode($response, true);
-        $errorMsg = $errorData['error']['message'] ?? "HTTP Error $httpCode";
-        throw new Exception("OpenAI API Error: $errorMsg");
-    }
-    
-    $result = json_decode($response, true);
-    
-    if (isset($result['choices'][0]['message']['content'])) {
-        return $result['choices'][0]['message']['content'];
-    }
-    
-    throw new Exception("Unexpected OpenAI API response format");
-}
-
-// ==============================================
-// OLLAMA API (LOCAL, FREE)
-// ==============================================
-
-/**
- * Ollama API Integration (Local AI)
- * Install from: https://ollama.com
- */
-function callOllamaAPI($prompt, $maxTokens = 1000) {
-    $data = [
-        'model' => OLLAMA_MODEL,
-        'prompt' => $prompt,
-        'stream' => false,
-        'options' => [
-            'temperature' => 0.7,
-            'num_predict' => $maxTokens
-        ]
-    ];
-    
-    $ch = curl_init(OLLAMA_API_URL);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 60);
-    
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error = curl_error($ch);
-    curl_close($ch);
-    
-    if ($error) {
-        throw new Exception("CURL Error: $error. Is Ollama running? Start with: ollama serve");
-    }
-    
-    if ($httpCode !== 200) {
-        throw new Exception("Ollama API Error: HTTP $httpCode. Make sure Ollama is installed and running.");
-    }
-    
-    $result = json_decode($response, true);
-    
-    if (isset($result['response'])) {
-        return $result['response'];
-    }
-    
-    throw new Exception("Unexpected Ollama API response format");
 }
 
 // ==============================================
@@ -407,8 +299,7 @@ function testAIConnection() {
 1️⃣ Choose AI Provider (edit .env file):
    
    AI_PROVIDER=gemini    # FREE, recommended for students
-   AI_PROVIDER=openai    # PAID, highest quality
-   AI_PROVIDER=ollama    # FREE, local, requires installation
+
 
 2️⃣ Add API Key to .env:
 
@@ -416,15 +307,6 @@ function testAIConnection() {
    - Get key: https://aistudio.google.com/app/apikey
    - Add to .env: GEMINI_API_KEY=AIzaSy...
 
-   For OpenAI (PAID):
-   - Get key: https://platform.openai.com/api-keys  
-   - Add to .env: OPENAI_API_KEY=sk-...
-
-   For Ollama (LOCAL):
-   - Install: https://ollama.com/download
-   - Run: ollama pull llama3.2:3b
-   - Start: ollama serve
-   - Update .env: OLLAMA_MODEL=llama3.2:3b
 
 3️⃣ Test Connection:
    http://localhost/AuditRiskTools/api/ai_actions.php?action=test
@@ -442,14 +324,6 @@ function testAIConnection() {
    - 1,500 requests/day
    - Perfect for: Student projects, demos
    
-   OpenAI GPT-4o-mini:
-   - $0.15/1M input tokens
-   - $0.60/1M output tokens  
-   - ~$0.80/month for 1000 reports
-   
-   Ollama (FREE, runs on your PC):
-   - Unlimited requests
-   - No internet needed
-   - Requires: 8GB RAM minimum
 */
+
 ?>
