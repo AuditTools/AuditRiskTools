@@ -99,10 +99,10 @@ try {
             $reportContent = $result['report'];
             $aiProvider = $result['provider'];
             
-            // Save generated report to database (using actual table structure)
+            // Save generated report to database (matching schema columns)
             $stmt = $pdo->prepare("
-                INSERT INTO ai_reports (audit_id, full_report, ai_model, generated_at) 
-                VALUES (?, ?, ?, NOW())
+                INSERT INTO ai_reports (audit_session_id, report_type, report_content, model_used) 
+                VALUES (?, 'full_report', ?, ?)
             ");
             $stmt->execute([$auditId, $reportContent, $aiProvider]);
             
@@ -171,9 +171,9 @@ try {
             $reportId = intval($_GET['id']);
             
             $stmt = $pdo->prepare("
-                SELECT r.*, a.id as audit_id
+                SELECT r.*, r.audit_session_id as audit_id
                 FROM ai_reports r
-                JOIN audit_sessions a ON r.audit_id = a.id
+                JOIN audit_sessions a ON r.audit_session_id = a.id
                 JOIN organizations o ON a.organization_id = o.id
                 WHERE r.id = ? AND o.user_id = ?
             ");
@@ -192,10 +192,10 @@ try {
             $stmt = $pdo->prepare("
                 SELECT r.*, a.session_name, o.organization_name
                 FROM ai_reports r
-                JOIN audit_sessions a ON r.audit_id = a.id
+                JOIN audit_sessions a ON r.audit_session_id = a.id
                 JOIN organizations o ON a.organization_id = o.id
                 WHERE o.user_id = ?
-                ORDER BY r.generated_at DESC
+                ORDER BY r.created_at DESC
             ");
             $stmt->execute([$userId]);
             $reports = $stmt->fetchAll();

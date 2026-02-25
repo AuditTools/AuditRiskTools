@@ -163,7 +163,12 @@ if ($audit_id) {
 
 <div class="mb-3">
     <label>Description</label>
-    <textarea name="description" class="form-control"></textarea>
+    <textarea name="description" class="form-control" rows="2"></textarea>
+</div>
+
+<div class="mb-3">
+    <label>Recommendation</label>
+    <textarea name="recommendation" class="form-control" rows="2" placeholder="Suggested remediation action..."></textarea>
 </div>
 
 <div class="row mb-3">
@@ -229,6 +234,7 @@ if ($audit_id) {
     <th>Risk Score</th>
     <th>NIST</th>
     <th>Compliance</th>
+    <th>Recommendation</th>
     <th>Remediation</th>
 </tr>
 </thead>
@@ -253,6 +259,9 @@ if ($audit_id) {
             </td>
             <td><?= htmlspecialchars($f['nist_function']) ?></td>
             <td><?= htmlspecialchars($f['audit_status'] ?? 'Non-Compliant') ?></td>
+            <td style="max-width:200px; font-size:0.85rem;">
+                <?= !empty($f['recommendation']) ? htmlspecialchars(mb_strimwidth($f['recommendation'], 0, 120, '...')) : '<span class="text-muted">—</span>' ?>
+            </td>
             <td style="min-width: 280px;">
                 <form class="remediationForm d-flex gap-2 align-items-center" data-finding-id="<?= intval($f['id']) ?>">
                     <input type="hidden" name="finding_id" value="<?= intval($f['id']) ?>">
@@ -276,7 +285,7 @@ if ($audit_id) {
     <?php endforeach; ?>
 <?php else: ?>
     <tr>
-        <td colspan="7" class="text-center">No findings yet</td>
+        <td colspan="8" class="text-center">No findings yet</td>
     </tr>
 <?php endif; ?>
 

@@ -36,15 +36,17 @@ try {
             $contactEmail = trim($_POST['contact_email'] ?? '');
             $contactPhone = trim($_POST['contact_phone'] ?? '');
             $address = trim($_POST['address'] ?? '');
+            $numEmployees = trim($_POST['number_of_employees'] ?? '');
+            $systemType = trim($_POST['system_type'] ?? '');
             
             if (empty($orgName) || empty($industry)) {
                 throw new Exception('Organization name and industry are required');
             }
             
             $stmt = $pdo->prepare("INSERT INTO organizations 
-                                  (user_id, organization_name, industry, contact_person, contact_email, contact_phone, address) 
-                                  VALUES (?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$userId, $orgName, $industry, $contactPerson, $contactEmail, $contactPhone, $address]);
+                                  (user_id, organization_name, industry, contact_person, contact_email, contact_phone, address, number_of_employees, system_type) 
+                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$userId, $orgName, $industry, $contactPerson, $contactEmail, $contactPhone, $address, $numEmployees ?: null, $systemType ?: null]);
             
             $orgId = $pdo->lastInsertId();
             
@@ -67,6 +69,8 @@ try {
             $contactEmail = trim($_POST['contact_email'] ?? '');
             $contactPhone = trim($_POST['contact_phone'] ?? '');
             $address = trim($_POST['address'] ?? '');
+            $numEmployees = trim($_POST['number_of_employees'] ?? '');
+            $systemType = trim($_POST['system_type'] ?? '');
             
             // Verify ownership
             $stmt = $pdo->prepare("SELECT id FROM organizations WHERE id = ? AND user_id = ?");
@@ -77,9 +81,10 @@ try {
             
             $stmt = $pdo->prepare("UPDATE organizations 
                                   SET organization_name = ?, industry = ?, contact_person = ?, 
-                                      contact_email = ?, contact_phone = ?, address = ?, updated_at = NOW()
+                                      contact_email = ?, contact_phone = ?, address = ?,
+                                      number_of_employees = ?, system_type = ?, updated_at = NOW()
                                   WHERE id = ? AND user_id = ?");
-            $stmt->execute([$orgName, $industry, $contactPerson, $contactEmail, $contactPhone, $address, $orgId, $userId]);
+            $stmt->execute([$orgName, $industry, $contactPerson, $contactEmail, $contactPhone, $address, $numEmployees ?: null, $systemType ?: null, $orgId, $userId]);
             
             logAction($pdo, $userId, 'UPDATE_ORGANIZATION', 'organizations', $orgId);
             

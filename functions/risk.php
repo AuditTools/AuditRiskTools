@@ -93,6 +93,14 @@ function calculateAssetCriticality($c, $i, $a) {
     return round(($c + $i + $a) / 3, 2);
 }
 
+// 3b. HELPER: Calculate Criticality Level from score
+function calculateCriticalityLevel($score) {
+    if ($score >= 4.5) return 'Critical';
+    if ($score >= 3.5) return 'High';
+    if ($score >= 2.5) return 'Medium';
+    return 'Low';
+}
+
 // 4. HELPER: Calculate Compliance & Maturity Indicator 
 function getComplianceAndMaturity($pdo, $auditId) {
     // Per PDF formula: Total Compliant / Total Findings * 100

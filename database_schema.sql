@@ -81,6 +81,8 @@ CREATE TABLE organizations (
     contact_email VARCHAR(150),
     contact_phone VARCHAR(20),
     address TEXT,
+    number_of_employees INT,
+    system_type VARCHAR(50),
     
     -- Status
     is_active TINYINT(1) DEFAULT 1,

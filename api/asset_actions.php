@@ -236,7 +236,7 @@ try {
 }
 
 function updateAuditCriticality($pdo, $auditId) {
-    updateAuditMetrics($pdo, $auditId, true);
+    updateAuditMetrics($pdo, $auditId);
 }
 
 function logAction($pdo, $userId, $action, $table, $recordId) {

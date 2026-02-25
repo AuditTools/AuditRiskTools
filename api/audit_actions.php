@@ -167,28 +167,8 @@ try {
                 throw new Exception('Audit session not found or access denied');
             }
             
-            // Calculate risk metrics
-            $riskData = calculateAuditRisk($pdo, $auditId);
-            
-            // Update audit session with calculated risk
-            $stmt = $pdo->prepare("UPDATE audit_sessions 
-                                  SET avg_asset_criticality = ?, 
-                                      avg_risk_score = ?, 
-                                      final_risk_score = ?, 
-                                      final_risk_level = ?,
-                                      compliance_percentage = ?,
-                                      nist_maturity_level = ?,
-                                      updated_at = NOW()
-                                  WHERE id = ?");
-            $stmt->execute([
-                $riskData['avg_asset_criticality'],
-                $riskData['avg_risk_score'],
-                $riskData['final_risk_score'],
-                $riskData['final_risk_level'],
-                $riskData['compliance_percentage'],
-                $riskData['nist_maturity_level'],
-                $auditId
-            ]);
+            // Calculate risk metrics (updateAuditMetrics also saves to DB)
+            $riskData = updateAuditMetrics($pdo, $auditId);
             
             logAction($pdo, $userId, 'CALCULATE_AUDIT_RISK', 'audit_sessions', $auditId);
             
