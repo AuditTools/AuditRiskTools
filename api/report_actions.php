@@ -89,7 +89,8 @@ if ($action === 'download_pdf') {
 	$pdfHtml .= renderReportHtml($data);
     
 	// Add Audit Opinion
-	$opinion = calculateAuditOpinion($pdo, $auditId);
+	$opinionData = calculateAuditOpinion($pdo, $auditId);
+	$opinion = $opinionData['opinion'];
 	$opinionBgColor = $opinion === 'Secure' ? '#28a745' : ($opinion === 'Acceptable Risk' ? '#ffc107' : '#dc3545');
 	$opinionTextColor = $opinion === 'Acceptable Risk' ? '#333' : '#fff';
     
@@ -100,9 +101,9 @@ if ($action === 'download_pdf') {
 	$pdfHtml .= "</div>";
 	$pdfHtml .= "<p class='text-center text-muted'>";
 	$pdfHtml .= "<strong>Based on:</strong><br>";
-	$pdfHtml .= "Compliance: " . number_format((float)($data['audit']['compliance_percentage'] ?? 0), 2) . "% | ";
-	$pdfHtml .= "Risk Level: " . htmlspecialchars($data['audit']['final_risk_level'] ?? 'Low') . " | ";
-	$pdfHtml .= "Exposure: " . htmlspecialchars($data['audit']['exposure_level'] ?? 'Low');
+	$pdfHtml .= "Compliance: " . number_format($opinionData['compliance'], 2) . "% | ";
+	$pdfHtml .= "Open Critical: " . $opinionData['open_critical'] . " | ";
+	$pdfHtml .= "Open High: " . $opinionData['open_high'];
 	$pdfHtml .= "</p>";
 	$pdfHtml .= "</div>";
     

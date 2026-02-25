@@ -26,6 +26,12 @@ if (!isLoggedIn()) {
 $userId = $_SESSION['user_id'];
 $action = $_GET['action'] ?? '';
 
+// Block auditee from write operations
+$writeActions = ['save', 'save_bulk'];
+if (in_array($action, $writeActions, true)) {
+    requireWriteAccess();
+}
+
 try {
     switch ($action) {
 

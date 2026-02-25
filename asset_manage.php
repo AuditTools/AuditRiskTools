@@ -6,35 +6,74 @@ require_once 'functions/auth.php';
 requireLogin();
 
 $userId = $_SESSION['user_id'];
+$userRole = $_SESSION['user_role'] ?? 'auditor';
 $audit_id = intval($_GET['audit_id'] ?? ($_SESSION['active_audit_id'] ?? 0));
 $selectedOrgId = intval($_GET['org_id'] ?? 0);
 $assets = [];
 $pageError = '';
 
-$stmtOrgList = $pdo->prepare("SELECT id, organization_name FROM organizations WHERE user_id = ? AND is_active = 1 ORDER BY organization_name ASC");
-$stmtOrgList->execute([$userId]);
-$organizations = $stmtOrgList->fetchAll(PDO::FETCH_ASSOC);
-
-$stmtAuditList = $pdo->prepare("SELECT a.id, a.organization_id, a.session_name, a.audit_date, o.organization_name FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE o.user_id = ? ORDER BY a.audit_date DESC, a.created_at DESC");
-$stmtAuditList->execute([$userId]);
-$allAudits = $stmtAuditList->fetchAll(PDO::FETCH_ASSOC);
-
-if ($audit_id > 0) {
-    $stmt = $pdo->prepare("SELECT a.id, a.organization_id FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ? AND o.user_id = ?");
-    $stmt->execute([$audit_id, $userId]);
-    $auditAccess = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$auditAccess) {
-        $pageError = 'Audit not found or access denied.';
-        $audit_id = 0;
-        unset($_SESSION['active_audit_id']);
+// Role-based data loading
+if ($userRole === 'auditee') {
+    // Auditee: only see assigned audits
+    $assignedAudits = getAuditeeAssignedAudits($pdo, $userId);
+    $organizations = [];
+    
+    if (count($assignedAudits) > 0) {
+        $placeholders = implode(',', array_fill(0, count($assignedAudits), '?'));
+        $stmtAuditList = $pdo->prepare("SELECT a.id, a.organization_id, a.session_name, a.audit_date, o.organization_name 
+            FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id 
+            WHERE a.id IN ($placeholders) ORDER BY a.audit_date DESC");
+        $stmtAuditList->execute($assignedAudits);
+        $allAudits = $stmtAuditList->fetchAll(PDO::FETCH_ASSOC);
     } else {
-        $selectedOrgId = intval($auditAccess['organization_id']);
-        $_SESSION['active_audit_id'] = $audit_id;
+        $allAudits = [];
+    }
 
+    if ($audit_id > 0 && !in_array($audit_id, $assignedAudits)) {
+        $pageError = 'You are not assigned to this audit.';
+        $audit_id = 0;
+    }
+} else {
+    // Admin/Auditor
+    if ($userRole === 'auditor') {
+        // Auditor owns orgs
+    } else {
+        // Admin: can view but not manage
+    }
+    
+    $stmtOrgList = $pdo->prepare("SELECT id, organization_name FROM organizations WHERE user_id = ? AND is_active = 1 ORDER BY organization_name ASC");
+    $stmtOrgList->execute([$userId]);
+    $organizations = $stmtOrgList->fetchAll(PDO::FETCH_ASSOC);
+
+    $stmtAuditList = $pdo->prepare("SELECT a.id, a.organization_id, a.session_name, a.audit_date, o.organization_name FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE o.user_id = ? ORDER BY a.audit_date DESC, a.created_at DESC");
+    $stmtAuditList->execute([$userId]);
+    $allAudits = $stmtAuditList->fetchAll(PDO::FETCH_ASSOC);
+}
+
+if ($audit_id > 0 && empty($pageError)) {
+    if ($userRole === 'auditee') {
+        $_SESSION['active_audit_id'] = $audit_id;
         $stmt = $pdo->prepare("SELECT * FROM assets WHERE audit_id = ?");
         $stmt->execute([$audit_id]);
         $assets = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $selectedOrgId = 0;
+    } else {
+        $stmt = $pdo->prepare("SELECT a.id, a.organization_id FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ? AND o.user_id = ?");
+        $stmt->execute([$audit_id, $userId]);
+        $auditAccess = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$auditAccess) {
+            $pageError = 'Audit not found or access denied.';
+            $audit_id = 0;
+            unset($_SESSION['active_audit_id']);
+        } else {
+            $selectedOrgId = intval($auditAccess['organization_id']);
+            $_SESSION['active_audit_id'] = $audit_id;
+
+            $stmt = $pdo->prepare("SELECT * FROM assets WHERE audit_id = ?");
+            $stmt->execute([$audit_id]);
+            $assets = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
     }
 }
 ?>
@@ -44,7 +83,9 @@ if ($audit_id > 0) {
 
 <div class="container mt-4">
 
-    <h2 class="mb-4">Asset Management</h2>
+    <h2 class="mb-4">
+        <?= $userRole === 'auditee' ? 'Asset Registration' : 'Asset Management' ?>
+    </h2>
 
     <div class="card shadow-sm mb-4">
         <div class="card-body">
@@ -88,7 +129,14 @@ if ($audit_id > 0) {
     <?php else: ?>
 
     <!-- Add Asset Form -->
+    <?php if ($userRole === 'auditee' || $userRole === 'auditor'): ?>
     <div class="card shadow-sm mb-4">
+        <div class="card-header <?= $userRole === 'auditee' ? 'bg-info text-white' : '' ?>">
+            <h5 class="mb-0"><?= $userRole === 'auditee' ? 'Register New Asset' : 'Add Asset' ?></h5>
+            <?php if ($userRole === 'auditee'): ?>
+                <small>Register assets for auditor review. CIA ratings will be set by the auditor.</small>
+            <?php endif; ?>
+        </div>
         <div class="card-body">
 
             <form id="assetForm">
@@ -98,57 +146,100 @@ if ($audit_id > 0) {
 
                 <div class="row mb-3">
                     <div class="col-md-4">
-                        <label>Asset Name</label>
+                        <label>Asset Name *</label>
                         <input type="text" name="asset_name" class="form-control" required>
                     </div>
 
                     <div class="col-md-4">
-                        <label>IP Address</label>
-                        <input type="text" name="ip_address" class="form-control">
+                        <label>IP Address / Location</label>
+                        <input type="text" name="ip_address" class="form-control" placeholder="e.g. 192.168.1.1 or Room A">
                     </div>
 
                     <div class="col-md-4">
-                        <label>Asset Type</label>
-                        <input type="text" name="asset_type" class="form-control">
+                        <label>Asset Type *</label>
+                        <select name="asset_type" class="form-select" required>
+                            <option value="">Select Type</option>
+                            <option value="Server">Server</option>
+                            <option value="Workstation">Workstation</option>
+                            <option value="Network Device">Network Device</option>
+                            <option value="Database">Database</option>
+                            <option value="Application">Application</option>
+                            <option value="Cloud Service">Cloud Service</option>
+                            <option value="Mobile Device">Mobile Device</option>
+                            <option value="Other">Other</option>
+                        </select>
                     </div>
                 </div>
 
                 <div class="row mb-3">
                     <div class="col-md-4">
-                        <label>Confidentiality (1-5)</label>
+                        <label>Owner</label>
+                        <input type="text" name="owner" class="form-control" placeholder="Person responsible">
+                    </div>
+                    <div class="col-md-4">
+                        <label>Department</label>
+                        <input type="text" name="department" class="form-control" placeholder="Department / Division">
+                    </div>
+                    <div class="col-md-4">
+                        <label>Description</label>
+                        <input type="text" name="description" class="form-control" placeholder="Brief description">
+                    </div>
+                </div>
+
+                <?php if ($userRole === 'auditor'): ?>
+                <!-- CIA Ratings: Auditor only -->
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label>Confidentiality (1-5) *</label>
                         <input type="number" min="1" max="5" name="confidentiality" class="form-control" required>
                     </div>
 
                     <div class="col-md-4">
-                        <label>Integrity (1-5)</label>
+                        <label>Integrity (1-5) *</label>
                         <input type="number" min="1" max="5" name="integrity" class="form-control" required>
                     </div>
 
                     <div class="col-md-4">
-                        <label>Availability (1-5)</label>
+                        <label>Availability (1-5) *</label>
                         <input type="number" min="1" max="5" name="availability" class="form-control" required>
                     </div>
                 </div>
+                <?php else: ?>
+                <!-- Auditee: CIA defaults to 0 (pending auditor review) -->
+                <input type="hidden" name="confidentiality" value="1">
+                <input type="hidden" name="integrity" value="1">
+                <input type="hidden" name="availability" value="1">
+                <?php endif; ?>
 
                 <button type="submit" class="btn btn-primary">
-                    Add Asset
+                    <?= $userRole === 'auditee' ? 'Register Asset' : 'Add Asset' ?>
                 </button>
 
             </form>
 
         </div>
     </div>
+    <?php endif; ?>
 
     <!-- Asset Table -->
-    <table class="table table-bordered">
+    <div class="card shadow-sm mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Asset Inventory (<?= count($assets) ?>)</h5>
+        </div>
+        <div class="card-body p-0">
+    <table class="table table-bordered mb-0">
         <thead class="table-dark">
             <tr>
                 <th>Asset</th>
-                <th>IP</th>
                 <th>Type</th>
+                <th>Owner</th>
+                <th>IP / Location</th>
                 <th>CIA</th>
-                <th>Criticality Score</th>
+                <th>Criticality</th>
                 <th>Level</th>
+                <?php if ($userRole === 'auditor'): ?>
+                    <th>Actions</th>
+                <?php endif; ?>
             </tr>
         </thead>
         <tbody>
@@ -156,8 +247,9 @@ if ($audit_id > 0) {
             <?php foreach ($assets as $asset): ?>
                 <tr>
                     <td><?= htmlspecialchars($asset['asset_name']) ?></td>
-                    <td><?= htmlspecialchars($asset['ip_address']) ?></td>
                     <td><?= htmlspecialchars($asset['asset_type']) ?></td>
+                    <td><?= htmlspecialchars($asset['owner'] ?? '—') ?></td>
+                    <td><?= htmlspecialchars($asset['ip_address'] ?? '—') ?></td>
                     <td>
                         <?= $asset['confidentiality'] ?>/<?= $asset['integrity'] ?>/<?= $asset['availability'] ?>
                     </td>
@@ -178,19 +270,40 @@ if ($audit_id > 0) {
                             <?= $asset['criticality_level'] ?>
                         </span>
                     </td>
+                    <?php if ($userRole === 'auditor'): ?>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary editCiaBtn" 
+                                data-asset-id="<?= $asset['id'] ?>"
+                                data-asset-name="<?= htmlspecialchars($asset['asset_name']) ?>"
+                                data-c="<?= $asset['confidentiality'] ?>"
+                                data-i="<?= $asset['integrity'] ?>"
+                                data-a="<?= $asset['availability'] ?>">
+                            <i class="fas fa-edit"></i> Set CIA
+                        </button>
+                    </td>
+                    <?php endif; ?>
                 </tr>
             <?php endforeach; ?>
         <?php else: ?>
             <tr>
-                <td colspan="6" class="text-center">No assets yet</td>
+                <td colspan="<?= $userRole === 'auditor' ? 8 : 7 ?>" class="text-center">No assets yet</td>
             </tr>
         <?php endif; ?>
         </tbody>
     </table>
+        </div>
+    </div>
 
-    <a href="findings.php?audit_id=<?= $audit_id ?>" class="btn btn-outline-danger">
-        Go to Findings
-    </a>
+    <?php if ($userRole === 'auditor'): ?>
+    <div class="d-flex gap-2">
+        <a href="vulnerability_assessment.php?audit_id=<?= $audit_id ?>" class="btn btn-outline-danger">
+            Vulnerability Assessment
+        </a>
+        <a href="findings.php?audit_id=<?= $audit_id ?>" class="btn btn-outline-warning">
+            Go to Findings
+        </a>
+    </div>
+    <?php endif; ?>
 
     <?php endif; ?>
 
@@ -241,10 +354,18 @@ document.getElementById('assetForm').addEventListener('submit', function(e) {
 
     const formData = new FormData(this);
 
+    <?php if ($userRole === 'auditee'): ?>
+    // Auditee uses a dedicated add action that allows auditee role
+    fetch('api/asset_actions.php?action=auditee_add', {
+        method: 'POST',
+        body: formData
+    })
+    <?php else: ?>
     fetch('api/asset_actions.php?action=add', {
         method: 'POST',
         body: formData
     })
+    <?php endif; ?>
     .then(res => res.json())
     .then(data => {
         if (data.success) {
@@ -255,6 +376,79 @@ document.getElementById('assetForm').addEventListener('submit', function(e) {
     })
     .catch(() => alert("Error adding asset"));
 });
+
+<?php if ($userRole === 'auditor'): ?>
+// CIA Edit modal for auditor
+document.querySelectorAll('.editCiaBtn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const assetId = this.dataset.assetId;
+        const assetName = this.dataset.assetName;
+        const c = this.dataset.c;
+        const i = this.dataset.i;
+        const a = this.dataset.a;
+        
+        const html = `
+            <div class="modal fade" id="ciaModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Set CIA for: ${assetName}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label>Confidentiality (1-5)</label>
+                                <input type="number" min="1" max="5" id="editC" class="form-control" value="${c}">
+                            </div>
+                            <div class="mb-3">
+                                <label>Integrity (1-5)</label>
+                                <input type="number" min="1" max="5" id="editI" class="form-control" value="${i}">
+                            </div>
+                            <div class="mb-3">
+                                <label>Availability (1-5)</label>
+                                <input type="number" min="1" max="5" id="editA" class="form-control" value="${a}">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" id="saveCiaBtn">Save CIA Ratings</button>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        
+        // Remove existing modal if any
+        const existing = document.getElementById('ciaModal');
+        if (existing) existing.remove();
+        
+        document.body.insertAdjacentHTML('beforeend', html);
+        const modal = new bootstrap.Modal(document.getElementById('ciaModal'));
+        modal.show();
+        
+        document.getElementById('saveCiaBtn').addEventListener('click', function() {
+            const fd = new FormData();
+            fd.append('id', assetId);
+            fd.append('confidentiality', document.getElementById('editC').value);
+            fd.append('integrity', document.getElementById('editI').value);
+            fd.append('availability', document.getElementById('editA').value);
+            fd.append('csrf_token', '<?= htmlspecialchars(generateCSRFToken()) ?>');
+            
+            fetch('api/asset_actions.php?action=update_cia', {
+                method: 'POST',
+                body: fd
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(data.message);
+                }
+            });
+        });
+    });
+});
+<?php endif; ?>
 <?php endif; ?>
 </script>
 

@@ -161,37 +161,47 @@ function getComplianceAndMaturity($pdo, $auditId) {
 }
 
 // 5. HELPER: Calculate Audit Opinion (P0)
+// Formula (finalized):
+//   Secure      → compliance ≥85% AND no open High/Critical findings
+//   Acceptable  → compliance 60–84% OR ≤2 open High findings (no Critical)
+//   Immediate   → compliance <60% OR any open Critical finding
 function calculateAuditOpinion($pdo, $auditId) {
-    $stmt = $pdo->prepare("SELECT 
-        compliance_percentage,
-        final_risk_level,
-        exposure_level
-        FROM audit_sessions WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT compliance_percentage FROM audit_sessions WHERE id = ?");
     $stmt->execute([$auditId]);
     $audit = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$audit) {
-        return 'Unknown';
+        return ['opinion' => 'Unknown', 'compliance' => 0, 'open_critical' => 0, 'open_high' => 0];
     }
     
     $compliance = (float)$audit['compliance_percentage'];
-    $risk = $audit['final_risk_level'];
-    $exposure = $audit['exposure_level'];
     
-    // Opinion Logic:
-    // 1. If compliance >= 80% AND risk <= Medium AND exposure <= Medium → "Secure"
-    // 2. If compliance >= 60% AND risk <= High AND exposure <= High → "Acceptable Risk" 
-    // 3. Otherwise → "Needs Action"
+    // Count open (non-resolved) High and Critical findings
+    $stmt = $pdo->prepare("SELECT 
+        SUM(CASE WHEN risk_level = 'Critical' AND remediation_status NOT IN ('Resolved','Accepted Risk') THEN 1 ELSE 0 END) AS open_critical,
+        SUM(CASE WHEN risk_level = 'High' AND remediation_status NOT IN ('Resolved','Accepted Risk') THEN 1 ELSE 0 END) AS open_high
+        FROM findings WHERE audit_id = ?");
+    $stmt->execute([$auditId]);
+    $counts = $stmt->fetch(PDO::FETCH_ASSOC);
+    $openCritical = (int)($counts['open_critical'] ?? 0);
+    $openHigh = (int)($counts['open_high'] ?? 0);
     
-    if ($compliance >= 80 && $risk !== 'Critical' && $exposure !== 'High') {
-        return 'Secure';
+    // Determine opinion
+    if ($openCritical > 0 || $compliance < 60) {
+        $opinion = 'Immediate Action Required';
+    } elseif ($compliance >= 85 && $openHigh === 0) {
+        $opinion = 'Secure';
+    } else {
+        // 60-84% range OR ≤2 High open
+        $opinion = 'Acceptable Risk';
     }
     
-    if ($compliance >= 60 && $risk !== 'Critical') {
-        return 'Acceptable Risk';
-    }
-    
-    return 'Needs Action';
+    return [
+        'opinion' => $opinion,
+        'compliance' => $compliance,
+        'open_critical' => $openCritical,
+        'open_high' => $openHigh
+    ];
 }
 
 // 6. HELPER: Build Risk Matrix data for visualization

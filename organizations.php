@@ -3,6 +3,7 @@ session_start();
 require_once 'functions/db.php';
 require_once 'functions/auth.php';
 requireLogin();
+requireAuditor(); // Only admin/auditor can manage organizations
 
 $userId = $_SESSION['user_id'];
 

@@ -8,30 +8,55 @@ require_once 'functions/owasp.php';
 requireLogin();
 
 $userId   = $_SESSION['user_id'];
+$userRole = $_SESSION['user_role'] ?? 'auditor';
 $audit_id = intval($_GET['audit_id'] ?? ($_SESSION['active_audit_id'] ?? 0));
 $selectedOrgId = intval($_GET['org_id'] ?? 0);
 $pageError = '';
 
-$stmtOrgList = $pdo->prepare("SELECT id, organization_name FROM organizations WHERE user_id = ? AND is_active = 1 ORDER BY organization_name ASC");
-$stmtOrgList->execute([$userId]);
-$organizations = $stmtOrgList->fetchAll(PDO::FETCH_ASSOC);
-
-$stmtAuditList = $pdo->prepare("SELECT a.id, a.organization_id, a.session_name, a.audit_date, o.organization_name FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE o.user_id = ? ORDER BY a.audit_date DESC, a.created_at DESC");
-$stmtAuditList->execute([$userId]);
-$allAudits = $stmtAuditList->fetchAll(PDO::FETCH_ASSOC);
-
-if ($audit_id > 0) {
-    $stmtAccess = $pdo->prepare("SELECT a.id, a.organization_id FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ? AND o.user_id = ?");
-    $stmtAccess->execute([$audit_id, $userId]);
-    $access = $stmtAccess->fetch(PDO::FETCH_ASSOC);
-
-    if (!$access) {
-        $pageError = 'Audit not found or access denied.';
-        $audit_id = 0;
-        unset($_SESSION['active_audit_id']);
+if ($userRole === 'auditee') {
+    // Auditee: only see assigned audits
+    $organizations = [];
+    $assignedAudits = getAuditeeAssignedAudits($pdo, $userId);
+    
+    if (count($assignedAudits) > 0) {
+        $placeholders = implode(',', array_fill(0, count($assignedAudits), '?'));
+        $stmtAuditList = $pdo->prepare("SELECT a.id, a.organization_id, a.session_name, a.audit_date, o.organization_name 
+            FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id 
+            WHERE a.id IN ($placeholders) ORDER BY a.audit_date DESC");
+        $stmtAuditList->execute($assignedAudits);
+        $allAudits = $stmtAuditList->fetchAll(PDO::FETCH_ASSOC);
     } else {
-        $selectedOrgId = intval($access['organization_id']);
+        $allAudits = [];
+    }
+
+    if ($audit_id > 0 && !in_array($audit_id, $assignedAudits)) {
+        $pageError = 'You are not assigned to this audit.';
+        $audit_id = 0;
+    } elseif ($audit_id > 0) {
         $_SESSION['active_audit_id'] = $audit_id;
+    }
+} else {
+    $stmtOrgList = $pdo->prepare("SELECT id, organization_name FROM organizations WHERE user_id = ? AND is_active = 1 ORDER BY organization_name ASC");
+    $stmtOrgList->execute([$userId]);
+    $organizations = $stmtOrgList->fetchAll(PDO::FETCH_ASSOC);
+
+    $stmtAuditList = $pdo->prepare("SELECT a.id, a.organization_id, a.session_name, a.audit_date, o.organization_name FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE o.user_id = ? ORDER BY a.audit_date DESC, a.created_at DESC");
+    $stmtAuditList->execute([$userId]);
+    $allAudits = $stmtAuditList->fetchAll(PDO::FETCH_ASSOC);
+
+    if ($audit_id > 0) {
+        $stmtAccess = $pdo->prepare("SELECT a.id, a.organization_id FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ? AND o.user_id = ?");
+        $stmtAccess->execute([$audit_id, $userId]);
+        $access = $stmtAccess->fetch(PDO::FETCH_ASSOC);
+
+        if (!$access) {
+            $pageError = 'Audit not found or access denied.';
+            $audit_id = 0;
+            unset($_SESSION['active_audit_id']);
+        } else {
+            $selectedOrgId = intval($access['organization_id']);
+            $_SESSION['active_audit_id'] = $audit_id;
+        }
     }
 }
 
@@ -79,7 +104,7 @@ try {
 
 <div class="container mt-4">
 
-<h2 class="mb-4">Vulnerability & Risk Assessment</h2>
+<h2 class="mb-4"><?= $userRole === 'auditee' ? 'Findings & Management Response' : 'Vulnerability & Risk Assessment' ?></h2>
 
 <div class="card shadow-sm mb-4">
 <div class="card-body">
@@ -122,6 +147,7 @@ try {
     <div class="alert alert-warning">Pilih audit session dulu untuk mengelola findings.</div>
 <?php else: ?>
 
+<?php if ($userRole === 'auditor'): ?>
 <div class="card shadow-sm mb-4">
 <div class="card-body">
 
@@ -244,6 +270,7 @@ try {
 </form>
 </div>
 </div>
+<?php endif; /* auditor only - add finding form */ ?>
 
 <div class="card shadow-sm">
 <div class="card-body">
@@ -270,7 +297,10 @@ try {
     <th>NIST</th>
     <th>Compliance</th>
     <th>Recommendation</th>
-    <th>Remediation</th>
+    <th>Status</th>
+    <?php if ($userRole === 'auditor'): ?>
+        <th>Actions</th>
+    <?php endif; ?>
 </tr>
 </thead>
 <tbody>
@@ -306,47 +336,99 @@ try {
             <td style="max-width:200px; font-size:0.85rem;">
                 <?= !empty($f['recommendation']) ? htmlspecialchars(mb_strimwidth($f['recommendation'], 0, 120, '...')) : '<span class="text-muted">—</span>' ?>
             </td>
-            <td style="min-width: 280px;">
-                <form class="remediationForm d-flex gap-2 align-items-center" data-finding-id="<?= intval($f['id']) ?>">
+            <td>
+                <?php 
+                $currentStatus = $f['remediation_status'] ?? 'Open';
+                $statusClass = 'bg-danger';
+                if ($currentStatus === 'Resolved') $statusClass = 'bg-success';
+                elseif ($currentStatus === 'In Progress') $statusClass = 'bg-warning text-dark';
+                elseif ($currentStatus === 'Accepted Risk') $statusClass = 'bg-info';
+                ?>
+                <span class="badge <?= $statusClass ?>"><?= htmlspecialchars($currentStatus) ?></span>
+            </td>
+            <?php if ($userRole === 'auditor'): ?>
+            <td style="min-width: 200px;">
+                <?php if ($currentStatus === 'In Progress' || $currentStatus === 'Open'): ?>
+                    <form class="closeFindingForm d-inline" data-finding-id="<?= intval($f['id']) ?>">
+                        <input type="hidden" name="finding_id" value="<?= intval($f['id']) ?>">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCSRFToken()) ?>">
+                        <button type="submit" class="btn btn-sm btn-success" title="Close Finding">
+                            <i class="fas fa-check"></i> Close
+                        </button>
+                    </form>
+                <?php endif; ?>
+                <?php if ($currentStatus === 'Resolved'): ?>
+                    <form class="reopenFindingForm d-inline" data-finding-id="<?= intval($f['id']) ?>">
+                        <input type="hidden" name="finding_id" value="<?= intval($f['id']) ?>">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCSRFToken()) ?>">
+                        <button type="submit" class="btn btn-sm btn-outline-warning" title="Reopen Finding">
+                            <i class="fas fa-redo"></i> Reopen
+                        </button>
+                    </form>
+                <?php endif; ?>
+                <form class="remediationForm d-inline-flex gap-1 align-items-center mt-1" data-finding-id="<?= intval($f['id']) ?>">
                     <input type="hidden" name="finding_id" value="<?= intval($f['id']) ?>">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCSRFToken()) ?>">
-                    <select name="remediation_status" class="form-select form-select-sm">
-                        <?php
-                        $remediationStatuses = ['Open', 'In Progress', 'Resolved', 'Accepted Risk'];
-                        $currentStatus = $f['remediation_status'] ?? 'Open';
-                        foreach ($remediationStatuses as $statusOption):
-                        ?>
-                            <option value="<?= htmlspecialchars($statusOption) ?>" <?= $currentStatus === $statusOption ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($statusOption) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    <input type="date" name="remediation_deadline" value="<?= htmlspecialchars($f['remediation_deadline'] ?? '') ?>" class="form-control form-control-sm">
-                    <button type="submit" class="btn btn-sm btn-outline-primary">Save</button>
+                    <input type="date" name="remediation_deadline" value="<?= htmlspecialchars($f['remediation_deadline'] ?? '') ?>" class="form-control form-control-sm" style="width:130px" title="Deadline">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary" title="Set deadline">
+                        <i class="fas fa-calendar"></i>
+                    </button>
                 </form>
             </td>
+            <?php endif; ?>
         </tr>
         <tr>
-            <td colspan="8">
+            <td colspan="<?= $userRole === 'auditor' ? 9 : 8 ?>">
                 <details>
                     <summary class="cursor-pointer" style="cursor: pointer;">
-                        <strong>Evidence Files</strong> 
+                        <strong>Details & Evidence</strong>
+                        <?php if (!empty($f['management_response'])): ?>
+                            <span class="badge bg-info ms-2">Has Response</span>
+                        <?php endif; ?>
                         <?php if ($hasEvidenceTable): ?>
                             <?php 
-                            // Retrieve evidence count
                             $stmtEv = $pdo->prepare("SELECT COUNT(*) as count FROM audit_evidence WHERE finding_id = ?");
                             $stmtEv->execute([$f['id']]);
                             $eviCount = $stmtEv->fetch(PDO::FETCH_ASSOC)['count'];
-                            echo '(' . $eviCount . ')';
+                            echo ' (' . $eviCount . ' files)';
                             ?>
-                        <?php else: ?>
-                            <span class="text-muted">(table belum dibuat)</span>
                         <?php endif; ?>
                     </summary>
                     <div class="p-3 bg-light mt-2">
+                        
+                        <!-- Management Response Section -->
+                        <div class="mb-3">
+                            <h6><i class="fas fa-reply"></i> Management Response</h6>
+                            <?php if (!empty($f['management_response'])): ?>
+                                <div class="border rounded p-2 bg-white mb-2">
+                                    <p class="mb-1"><?= nl2br(htmlspecialchars($f['management_response'])) ?></p>
+                                    <small class="text-muted">
+                                        Responded: <?= $f['response_date'] ? date('M d, Y H:i', strtotime($f['response_date'])) : '—' ?>
+                                    </small>
+                                </div>
+                            <?php else: ?>
+                                <p class="text-muted mb-2">No management response yet.</p>
+                            <?php endif; ?>
+
+                            <?php if ($userRole === 'auditee' && ($f['remediation_status'] ?? 'Open') !== 'Resolved'): ?>
+                                <form class="mgmtResponseForm" data-finding-id="<?= intval($f['id']) ?>">
+                                    <input type="hidden" name="finding_id" value="<?= intval($f['id']) ?>">
+                                    <input type="hidden" name="audit_id" value="<?= intval($audit_id) ?>">
+                                    <textarea name="management_response" class="form-control form-control-sm mb-2" rows="3" 
+                                              placeholder="Enter your response: action plan, timeline, remediation steps..."><?= htmlspecialchars($f['management_response'] ?? '') ?></textarea>
+                                    <button type="submit" class="btn btn-sm btn-primary">
+                                        <i class="fas fa-paper-plane"></i> Submit Response
+                                    </button>
+                                </form>
+                            <?php endif; ?>
+                        </div>
+
+                        <hr>
+
+                        <!-- Evidence Section -->
                         <?php if (!$hasEvidenceTable): ?>
                             <div class="alert alert-warning mb-2">
-                                Fitur evidence belum aktif karena tabel <strong>audit_evidence</strong> belum ada di database. Import ulang <strong>database_schema.sql</strong> atau jalankan migration tabel tersebut.
+                                Evidence feature not active (table missing).
                             </div>
                         <?php else: ?>
                             <?php
@@ -397,7 +479,7 @@ try {
     <?php endforeach; ?>
 <?php else: ?>
     <tr>
-        <td colspan="8" class="text-center">No findings yet</td>
+        <td colspan="<?= $userRole === 'auditor' ? 9 : 8 ?>" class="text-center">No findings yet</td>
     </tr>
 <?php endif; ?>
 
@@ -567,6 +649,69 @@ document.querySelectorAll('.deleteEviBtn').forEach((btn) => {
             }
         })
         .catch(() => alert('Error deleting evidence'));
+    });
+});
+
+// Close finding handlers (auditor)
+document.querySelectorAll('.closeFindingForm').forEach((form) => {
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (!confirm('Close this finding? This marks it as Resolved.')) return;
+        
+        const formData = new FormData(this);
+        fetch('api/finding_actions.php?action=close_finding', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) location.reload();
+            else alert(data.message);
+        })
+        .catch(() => alert('Error closing finding'));
+    });
+});
+
+// Reopen finding handlers (auditor)
+document.querySelectorAll('.reopenFindingForm').forEach((form) => {
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        if (!confirm('Reopen this finding?')) return;
+        
+        const formData = new FormData(this);
+        fetch('api/finding_actions.php?action=reopen_finding', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) location.reload();
+            else alert(data.message);
+        })
+        .catch(() => alert('Error reopening finding'));
+    });
+});
+
+// Management response handlers (auditee)
+document.querySelectorAll('.mgmtResponseForm').forEach((form) => {
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        fetch('api/finding_actions.php?action=management_response', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert('Response submitted successfully!');
+                location.reload();
+            } else {
+                alert(data.message || 'Error submitting response');
+            }
+        })
+        .catch(() => alert('Error submitting response'));
     });
 });
 <?php endif; ?>

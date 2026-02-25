@@ -70,6 +70,11 @@ $error = '';
                         </div>
                     </div>
 
+                    <!-- Role is always 'auditor' for self-registration.
+                         Auditee accounts are created by auditors and assigned to specific audits.
+                         Admin accounts can only be created by existing admins. -->
+                    <input type="hidden" name="role" value="auditor">
+
                     <div class="mb-3">
                         <label class="form-label">Password *</label>
                         <div class="input-group">

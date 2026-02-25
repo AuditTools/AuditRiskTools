@@ -38,15 +38,30 @@ try {
             $auditId = intval($_POST['audit_id']);
             $evidenceType = $_POST['evidence_type'] ?? 'Other';
             $description = trim($_POST['description'] ?? '');
+            $role = $_SESSION['user_role'] ?? 'auditor';
 
-            // Verify finding ownership + audit
-            $stmt = $pdo->prepare("SELECT f.id FROM findings f
-                JOIN audit_sessions a ON f.audit_id = a.id
-                JOIN organizations o ON a.organization_id = o.id
-                WHERE f.id = ? AND f.audit_id = ? AND o.user_id = ?");
-            $stmt->execute([$findingId, $auditId, $userId]);
-            if (!$stmt->fetch()) {
-                throw new Exception('Finding not found or access denied');
+            // Role-based access check
+            if ($role === 'auditee') {
+                // Auditee must be assigned to this audit
+                if (!isAuditeeAssigned($pdo, $auditId, $userId)) {
+                    throw new Exception('You are not assigned to this audit');
+                }
+                // Verify finding belongs to this audit
+                $stmt = $pdo->prepare("SELECT id FROM findings WHERE id = ? AND audit_id = ?");
+                $stmt->execute([$findingId, $auditId]);
+                if (!$stmt->fetch()) {
+                    throw new Exception('Finding not found in this audit');
+                }
+            } else {
+                // Auditor: verify finding ownership + audit
+                $stmt = $pdo->prepare("SELECT f.id FROM findings f
+                    JOIN audit_sessions a ON f.audit_id = a.id
+                    JOIN organizations o ON a.organization_id = o.id
+                    WHERE f.id = ? AND f.audit_id = ? AND o.user_id = ?");
+                $stmt->execute([$findingId, $auditId, $userId]);
+                if (!$stmt->fetch()) {
+                    throw new Exception('Finding not found or access denied');
+                }
             }
 
             // Whitelist allowed MIME types
@@ -132,15 +147,22 @@ try {
         case 'list':
             $findingId = intval($_GET['finding_id']);
             $auditId = intval($_GET['audit_id']);
+            $role = $_SESSION['user_role'] ?? 'auditor';
 
-            // Verify access
-            $stmt = $pdo->prepare("SELECT f.id FROM findings f
-                JOIN audit_sessions a ON f.audit_id = a.id
-                JOIN organizations o ON a.organization_id = o.id
-                WHERE f.id = ? AND f.audit_id = ? AND o.user_id = ?");
-            $stmt->execute([$findingId, $auditId, $userId]);
-            if (!$stmt->fetch()) {
-                throw new Exception('Finding not found or access denied');
+            // Role-based access check
+            if ($role === 'auditee') {
+                if (!isAuditeeAssigned($pdo, $auditId, $userId)) {
+                    throw new Exception('You are not assigned to this audit');
+                }
+            } else {
+                $stmt = $pdo->prepare("SELECT f.id FROM findings f
+                    JOIN audit_sessions a ON f.audit_id = a.id
+                    JOIN organizations o ON a.organization_id = o.id
+                    WHERE f.id = ? AND f.audit_id = ? AND o.user_id = ?");
+                $stmt->execute([$findingId, $auditId, $userId]);
+                if (!$stmt->fetch()) {
+                    throw new Exception('Finding not found or access denied');
+                }
             }
 
             $stmt = $pdo->prepare("SELECT id, original_filename, file_path, file_type, file_size, evidence_type, description, created_at
@@ -162,13 +184,23 @@ try {
             }
 
             // Verify ownership + get filepath
-            $stmt = $pdo->prepare("SELECT ae.file_path, ae.finding_id
-                FROM audit_evidence ae
-                JOIN findings f ON ae.finding_id = f.id
-                JOIN audit_sessions a ON f.audit_id = a.id
-                JOIN organizations o ON a.organization_id = o.id
-                WHERE ae.id = ? AND o.user_id = ?");
-            $stmt->execute([$evidenceId, $userId]);
+            $role = $_SESSION['user_role'] ?? 'auditor';
+            if ($role === 'auditee') {
+                // Auditee can only delete their own uploads
+                $stmt = $pdo->prepare("SELECT ae.file_path, ae.finding_id, f.audit_id
+                    FROM audit_evidence ae
+                    JOIN findings f ON ae.finding_id = f.id
+                    WHERE ae.id = ? AND ae.uploaded_by = ?");
+                $stmt->execute([$evidenceId, $userId]);
+            } else {
+                $stmt = $pdo->prepare("SELECT ae.file_path, ae.finding_id, f.audit_id
+                    FROM audit_evidence ae
+                    JOIN findings f ON ae.finding_id = f.id
+                    JOIN audit_sessions a ON f.audit_id = a.id
+                    JOIN organizations o ON a.organization_id = o.id
+                    WHERE ae.id = ? AND o.user_id = ?");
+                $stmt->execute([$evidenceId, $userId]);
+            }
             $ev = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$ev) {

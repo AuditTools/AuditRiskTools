@@ -33,6 +33,12 @@ if (!isLoggedIn()) {
 $userId = $_SESSION['user_id'];
 $action = $_GET['action'] ?? '';
 
+// Block auditee from write operations
+$writeActions = ['create', 'update', 'delete', 'assign_auditee', 'remove_auditee'];
+if (in_array($action, $writeActions, true)) {
+    requireWriteAccess();
+}
+
 try {
     switch ($action) {
         case 'create':
@@ -200,7 +206,22 @@ try {
         case 'list':
             // List all audit sessions for organization
             $orgId = intval($_GET['organization_id'] ?? 0);
-            
+            $role = $_SESSION['user_role'] ?? 'auditor';
+
+            if ($role === 'auditee') {
+                // Auditee: only see assigned audits
+                $stmt = $pdo->prepare("SELECT a.*, o.organization_name 
+                                      FROM audit_sessions a 
+                                      JOIN organizations o ON a.organization_id = o.id 
+                                      JOIN audit_auditees aa ON aa.audit_id = a.id 
+                                      WHERE aa.auditee_user_id = ? 
+                                      ORDER BY a.audit_date DESC");
+                $stmt->execute([$userId]);
+                $audits = $stmt->fetchAll();
+                echo json_encode(['success' => true, 'data' => $audits]);
+                break;
+            }
+
             if ($orgId > 0) {
                 // Verify organization ownership
                 $stmt = $pdo->prepare("SELECT id FROM organizations WHERE id = ? AND user_id = ?");
@@ -224,6 +245,107 @@ try {
             $audits = $stmt->fetchAll();
             
             echo json_encode(['success' => true, 'data' => $audits]);
+            break;
+
+        case 'assign_auditee':
+            // Assign auditee user to an audit session
+            $auditId = intval($_POST['audit_id']);
+            $auditeeUserId = intval($_POST['auditee_user_id']);
+
+            // Verify audit ownership
+            $stmt = $pdo->prepare("SELECT a.id, a.session_name FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ? AND o.user_id = ?");
+            $stmt->execute([$auditId, $userId]);
+            $audit = $stmt->fetch();
+            if (!$audit) {
+                throw new Exception('Audit session not found or access denied');
+            }
+
+            // Verify target is an auditee
+            $stmt = $pdo->prepare("SELECT id, name FROM users WHERE id = ? AND role = 'auditee' AND is_active = 1");
+            $stmt->execute([$auditeeUserId]);
+            $auditee = $stmt->fetch();
+            if (!$auditee) {
+                throw new Exception('User not found or is not an active auditee');
+            }
+
+            // Insert assignment (ignore if already exists)
+            $stmt = $pdo->prepare("INSERT IGNORE INTO audit_auditees (audit_id, auditee_user_id, assigned_by) VALUES (?, ?, ?)");
+            $stmt->execute([$auditId, $auditeeUserId, $userId]);
+
+            // Create notification for auditee
+            $msg = "You have been assigned to audit: " . $audit['session_name'];
+            createNotification($pdo, $auditeeUserId, $auditId, 'audit_assigned', $msg);
+
+            logAction($pdo, $userId, 'ASSIGN_AUDITEE', 'audit_auditees', $auditId);
+
+            echo json_encode(['success' => true, 'message' => 'Auditee "' . $auditee['name'] . '" assigned successfully']);
+            break;
+
+        case 'remove_auditee':
+            // Remove auditee from audit session
+            $auditId = intval($_POST['audit_id']);
+            $auditeeUserId = intval($_POST['auditee_user_id']);
+
+            // Verify audit ownership
+            $stmt = $pdo->prepare("SELECT a.id FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ? AND o.user_id = ?");
+            $stmt->execute([$auditId, $userId]);
+            if (!$stmt->fetch()) {
+                throw new Exception('Audit session not found or access denied');
+            }
+
+            $stmt = $pdo->prepare("DELETE FROM audit_auditees WHERE audit_id = ? AND auditee_user_id = ?");
+            $stmt->execute([$auditId, $auditeeUserId]);
+
+            logAction($pdo, $userId, 'REMOVE_AUDITEE', 'audit_auditees', $auditId);
+
+            echo json_encode(['success' => true, 'message' => 'Auditee removed from audit']);
+            break;
+
+        case 'list_auditees':
+            // List auditees assigned to an audit
+            $auditId = intval($_GET['audit_id']);
+
+            // Verify audit ownership
+            $stmt = $pdo->prepare("SELECT a.id FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ? AND o.user_id = ?");
+            $stmt->execute([$auditId, $userId]);
+            if (!$stmt->fetch()) {
+                throw new Exception('Audit session not found or access denied');
+            }
+
+            $stmt = $pdo->prepare("SELECT u.id, u.name, u.email, aa.assigned_at 
+                                  FROM audit_auditees aa 
+                                  JOIN users u ON aa.auditee_user_id = u.id 
+                                  WHERE aa.audit_id = ? 
+                                  ORDER BY aa.assigned_at DESC");
+            $stmt->execute([$auditId]);
+            $auditees = $stmt->fetchAll();
+
+            echo json_encode(['success' => true, 'data' => $auditees]);
+            break;
+
+        case 'available_auditees':
+            // List all auditee users (for assignment dropdown)
+            $stmt = $pdo->prepare("SELECT id, name, email FROM users WHERE role = 'auditee' AND is_active = 1 ORDER BY name ASC");
+            $stmt->execute();
+            $auditees = $stmt->fetchAll();
+
+            echo json_encode(['success' => true, 'data' => $auditees]);
+            break;
+
+        case 'notifications':
+            // Get notifications for current user
+            $stmt = $pdo->prepare("SELECT n.*, a.session_name 
+                                  FROM notifications n 
+                                  LEFT JOIN audit_sessions a ON n.audit_id = a.id 
+                                  WHERE n.user_id = ? 
+                                  ORDER BY n.created_at DESC LIMIT 30");
+            $stmt->execute([$userId]);
+            $notifications = $stmt->fetchAll();
+
+            // Mark as read
+            $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0")->execute([$userId]);
+
+            echo json_encode(['success' => true, 'data' => $notifications]);
             break;
             
         default:

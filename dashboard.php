@@ -5,17 +5,50 @@ require_once 'functions/auth.php';
 requireLogin();
 
 $userId = $_SESSION['user_id'];
+$userRole = $_SESSION['user_role'] ?? 'auditor';
 $audit_id = intval($_GET['audit_id'] ?? ($_SESSION['active_audit_id'] ?? 0));
 
 $_SESSION['active_audit_id'] = $audit_id > 0 ? $audit_id : ($_SESSION['active_audit_id'] ?? null);
 
-$stmtOrgList = $pdo->prepare("SELECT id, organization_name FROM organizations WHERE user_id = ? AND is_active = 1 ORDER BY organization_name ASC");
-$stmtOrgList->execute([$userId]);
-$organizations = $stmtOrgList->fetchAll(PDO::FETCH_ASSOC);
+$organizations = [];
+$allAudits = [];
 
-$stmtAuditList = $pdo->prepare("SELECT a.id, a.organization_id, a.session_name, a.audit_date, o.organization_name FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE o.user_id = ? ORDER BY a.audit_date DESC, a.created_at DESC");
-$stmtAuditList->execute([$userId]);
-$allAudits = $stmtAuditList->fetchAll(PDO::FETCH_ASSOC);
+if ($userRole === 'auditee') {
+    // Auditee: only sees assigned audits
+    $assignedIds = getAuditeeAssignedAudits($pdo, $userId);
+    if (!empty($assignedIds)) {
+        $placeholders = implode(',', array_fill(0, count($assignedIds), '?'));
+        $stmtAuditList = $pdo->prepare("SELECT a.id, a.organization_id, a.session_name, a.audit_date, o.organization_name FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id IN ($placeholders) ORDER BY a.audit_date DESC, a.created_at DESC");
+        $stmtAuditList->execute($assignedIds);
+        $allAudits = $stmtAuditList->fetchAll(PDO::FETCH_ASSOC);
+        // Get unique orgs from assigned audits
+        $orgIds = array_unique(array_column($allAudits, 'organization_id'));
+        if (!empty($orgIds)) {
+            $orgPlaceholders = implode(',', array_fill(0, count($orgIds), '?'));
+            $stmtOrgList = $pdo->prepare("SELECT id, organization_name FROM organizations WHERE id IN ($orgPlaceholders) ORDER BY organization_name ASC");
+            $stmtOrgList->execute(array_values($orgIds));
+            $organizations = $stmtOrgList->fetchAll(PDO::FETCH_ASSOC);
+        }
+    }
+} elseif ($userRole === 'admin') {
+    // Admin: sees all organizations and audits for oversight
+    $stmtOrgList = $pdo->prepare("SELECT id, organization_name FROM organizations WHERE is_active = 1 ORDER BY organization_name ASC");
+    $stmtOrgList->execute();
+    $organizations = $stmtOrgList->fetchAll(PDO::FETCH_ASSOC);
+
+    $stmtAuditList = $pdo->prepare("SELECT a.id, a.organization_id, a.session_name, a.audit_date, o.organization_name FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id ORDER BY a.audit_date DESC, a.created_at DESC");
+    $stmtAuditList->execute();
+    $allAudits = $stmtAuditList->fetchAll(PDO::FETCH_ASSOC);
+} else {
+    // Auditor: sees own organizations
+    $stmtOrgList = $pdo->prepare("SELECT id, organization_name FROM organizations WHERE user_id = ? AND is_active = 1 ORDER BY organization_name ASC");
+    $stmtOrgList->execute([$userId]);
+    $organizations = $stmtOrgList->fetchAll(PDO::FETCH_ASSOC);
+
+    $stmtAuditList = $pdo->prepare("SELECT a.id, a.organization_id, a.session_name, a.audit_date, o.organization_name FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE o.user_id = ? ORDER BY a.audit_date DESC, a.created_at DESC");
+    $stmtAuditList->execute([$userId]);
+    $allAudits = $stmtAuditList->fetchAll(PDO::FETCH_ASSOC);
+}
 
 $audit = null;
 $topRisks = [];
@@ -23,9 +56,24 @@ $assetCount = 0;
 $findingCount = 0;
 $selectedOrgId = intval($_GET['org_id'] ?? 0);
 
+// Notifications count for auditee
+$notifCount = 0;
+if ($userRole === 'auditee') {
+    $notifCount = getUnreadNotificationCount($pdo, $userId);
+}
+
 if ($audit_id) {
-    $stmt = $pdo->prepare("SELECT a.*, o.organization_name, o.industry FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ? AND o.user_id = ?");
-    $stmt->execute([$audit_id, $userId]);
+    // Role-based audit access check
+    if ($userRole === 'auditee') {
+        $stmt = $pdo->prepare("SELECT a.*, o.organization_name, o.industry FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id JOIN audit_auditees aa ON aa.audit_id = a.id WHERE a.id = ? AND aa.user_id = ?");
+        $stmt->execute([$audit_id, $userId]);
+    } elseif ($userRole === 'admin') {
+        $stmt = $pdo->prepare("SELECT a.*, o.organization_name, o.industry FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ?");
+        $stmt->execute([$audit_id]);
+    } else {
+        $stmt = $pdo->prepare("SELECT a.*, o.organization_name, o.industry FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ? AND o.user_id = ?");
+        $stmt->execute([$audit_id, $userId]);
+    }
     $audit = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($audit) {
@@ -50,7 +98,12 @@ include 'includes/sidebar.php';
 ?>
 
 <div class="container mt-4">
-    <h2 class="mb-4">Dashboard</h2>
+    <h2 class="mb-4">
+        Dashboard
+        <?php if ($userRole === 'auditee' && $notifCount > 0): ?>
+            <span class="badge bg-danger ms-2" title="Unread Notifications"><?php echo $notifCount; ?></span>
+        <?php endif; ?>
+    </h2>
 
     <div class="card shadow-sm mb-4">
         <div class="card-body">
@@ -185,8 +238,15 @@ include 'includes/sidebar.php';
         </div>
 
         <div class="d-flex gap-2">
-            <a href="asset_manage.php?audit_id=<?php echo intval($audit_id); ?>" class="btn btn-primary">Manage Assets</a>
-            <a href="findings.php?audit_id=<?php echo intval($audit_id); ?>" class="btn btn-warning">Manage Findings</a>
+            <?php if ($userRole === 'auditor'): ?>
+                <a href="asset_manage.php?audit_id=<?php echo intval($audit_id); ?>" class="btn btn-primary">Manage Assets</a>
+                <a href="findings.php?audit_id=<?php echo intval($audit_id); ?>" class="btn btn-warning">Manage Findings</a>
+            <?php elseif ($userRole === 'auditee'): ?>
+                <a href="asset_manage.php?audit_id=<?php echo intval($audit_id); ?>" class="btn btn-primary">Register Assets</a>
+                <a href="findings.php?audit_id=<?php echo intval($audit_id); ?>" class="btn btn-warning">View Findings & Respond</a>
+            <?php else: ?>
+                <a href="report.php?audit_id=<?php echo intval($audit_id); ?>" class="btn btn-info text-white">View Report</a>
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 </div>
