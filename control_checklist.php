@@ -173,58 +173,64 @@ include 'includes/sidebar.php';
     <?php endif; ?>
 </div>
 
-<!-- Audit Selector -->
-<?php if (!$audit_id): ?>
-    <div class="card mb-4">
-        <div class="card-body">
-            <h5>Select Audit Session</h5>
-            <?php if ($pageError): ?>
-                <div class="alert alert-danger"><?= htmlspecialchars($pageError) ?></div>
-            <?php endif; ?>
-
-            <!-- Org filter -->
-            <div class="row mb-3">
-                <div class="col-md-4">
-                    <label class="form-label">Filter by Organization</label>
-                    <select id="orgFilter" class="form-select" onchange="filterAudits()">
-                        <option value="0">All Organizations</option>
-                        <?php foreach ($organizations as $org): ?>
-                            <option value="<?= $org['id'] ?>" <?= $selectedOrgId == $org['id'] ? 'selected' : '' ?>><?= htmlspecialchars($org['organization_name']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Audit Session</label>
-                    <select id="auditSelect" class="form-select">
-                        <option value="">-- Choose Audit Session --</option>
-                        <?php foreach ($allAudits as $a): ?>
-                            <option value="<?= $a['id'] ?>" data-org="<?= $a['organization_id'] ?>"><?= htmlspecialchars($a['organization_name'] . ' — ' . $a['session_name'] . ' (' . $a['audit_date'] . ')') ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-2 d-flex align-items-end">
-                    <button class="btn btn-primary w-100" onclick="goToAudit()">Load Checklist</button>
-                </div>
+<!-- Audit Session Switcher (always visible) -->
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <h6 class="mb-3">Select Organization & Audit Session</h6>
+        <?php if ($pageError): ?>
+            <div class="alert alert-danger"><?= htmlspecialchars($pageError) ?></div>
+        <?php endif; ?>
+        <div class="row g-2">
+            <div class="col-md-4">
+                <select id="orgFilter" class="form-select" onchange="filterAudits()">
+                    <option value="0">All Organizations</option>
+                    <?php foreach ($organizations as $org): ?>
+                        <option value="<?= $org['id'] ?>" <?= $selectedOrgId == $org['id'] ? 'selected' : '' ?>><?= htmlspecialchars($org['organization_name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <select id="auditSelect" class="form-select">
+                    <option value="">-- Choose Audit Session --</option>
+                    <?php foreach ($allAudits as $a): ?>
+                        <option value="<?= $a['id'] ?>" data-org="<?= $a['organization_id'] ?>" <?= $audit_id == $a['id'] ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($a['organization_name'] . ' — ' . $a['session_name'] . ' (' . $a['audit_date'] . ')') ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-2 d-grid">
+                <button class="btn btn-primary" onclick="goToAudit()">Load</button>
             </div>
         </div>
     </div>
+</div>
 
-    <script>
-        function filterAudits() {
-            const orgId = document.getElementById('orgFilter').value;
-            const sel = document.getElementById('auditSelect');
-            Array.from(sel.options).forEach(o => {
-                if (!o.value) return;
-                o.style.display = (orgId === '0' || o.dataset.org === orgId) ? '' : 'none';
-            });
-            sel.value = '';
+<script>
+    function filterAudits() {
+        const orgId = document.getElementById('orgFilter').value;
+        const sel = document.getElementById('auditSelect');
+        Array.from(sel.options).forEach(o => {
+            if (!o.value) return;
+            o.style.display = (orgId === '0' || o.dataset.org === orgId) ? '' : 'none';
+        });
+        if (orgId !== '0') {
+            // If the currently selected audit doesn't match the org, clear it
+            const current = sel.options[sel.selectedIndex];
+            if (current && current.value && current.dataset.org !== orgId) {
+                sel.value = '';
+            }
         }
-        function goToAudit() {
-            const id = document.getElementById('auditSelect').value;
-            if (id) window.location = 'control_checklist.php?audit_id=' + id;
-        }
-        <?php if ($selectedOrgId): ?>filterAudits();<?php endif; ?>
-    </script>
+    }
+    function goToAudit() {
+        const id = document.getElementById('auditSelect').value;
+        if (id) window.location = 'control_checklist.php?audit_id=' + id;
+    }
+    <?php if ($selectedOrgId): ?>filterAudits();<?php endif; ?>
+</script>
+
+<?php if (!$audit_id): ?>
+    <div class="alert alert-warning">Select an audit session above to start the control checklist assessment.</div>
 <?php else: ?>
 
     <!-- ============ COMPLIANCE SUMMARY CARDS ============ -->

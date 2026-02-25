@@ -76,7 +76,7 @@ function updateAuditMetrics($pdo, $auditId) {
         $compliance['percentage'], $compliance['maturity'],
         $auditId
     ]);
-
+    
     // H. Return data for Dashboard rendering
     return [
         'avg_asset_criticality' => round($avg_asset_criticality, 2),
