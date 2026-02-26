@@ -17,6 +17,16 @@ if (!isLoggedIn()) {
 $userId = $_SESSION['user_id'];
 $action = $_GET['action'] ?? 'add';
 
+// Block auditee from auditor-only write operations
+$auditorWriteActions = ['add', 'delete'];
+if (in_array($action, $auditorWriteActions, true)) {
+    requireWriteAccess();
+}
+// update_remediation and close_finding: auditor only
+if (in_array($action, ['update_remediation', 'close_finding'], true)) {
+    requireWriteAccess();
+}
+
 try {
     switch ($action) {
         case 'add':
@@ -174,6 +184,135 @@ try {
             logAction($pdo, $userId, 'DELETE_FINDING', 'findings', $findingId);
 
             echo json_encode(['success' => true, 'message' => 'Finding deleted']);
+            break;
+
+        case 'management_response':
+            // Auditee submits management response to a finding
+            $role = $_SESSION['user_role'] ?? 'auditor';
+            if ($role !== 'auditee') {
+                throw new Exception('Only auditees can submit management responses');
+            }
+
+            $findingId = intval($_POST['finding_id']);
+            $response = trim($_POST['management_response'] ?? '');
+            $auditId = intval($_POST['audit_id'] ?? 0);
+
+            if (empty($response)) {
+                throw new Exception('Management response cannot be empty');
+            }
+
+            // Verify auditee is assigned to this audit
+            if (!isAuditeeAssigned($pdo, $auditId, $userId)) {
+                throw new Exception('You are not assigned to this audit');
+            }
+
+            // Verify finding belongs to this audit
+            $stmt = $pdo->prepare("SELECT id, audit_id, title FROM findings WHERE id = ? AND audit_id = ?");
+            $stmt->execute([$findingId, $auditId]);
+            $finding = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$finding) {
+                throw new Exception('Finding not found in this audit');
+            }
+
+            // Update management response
+            $stmt = $pdo->prepare("UPDATE findings SET management_response = ?, response_date = NOW(), responded_by = ?, remediation_status = 'In Progress' WHERE id = ?");
+            $stmt->execute([$response, $userId, $findingId]);
+
+            // Notify auditor
+            $stmt = $pdo->prepare("SELECT o.user_id FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ?");
+            $stmt->execute([$auditId]);
+            $auditorInfo = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($auditorInfo) {
+                $userName = $_SESSION['user_name'] ?? 'Auditee';
+                createNotification($pdo, $auditorInfo['user_id'], $auditId, 'response_submitted', 
+                    "$userName responded to finding: " . $finding['title']);
+            }
+
+            logAction($pdo, $userId, 'MANAGEMENT_RESPONSE', 'findings', $findingId);
+
+            echo json_encode(['success' => true, 'message' => 'Management response submitted']);
+            break;
+
+        case 'close_finding':
+            // Auditor closes a finding (mark as Resolved)
+            if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+                throw new Exception('Invalid CSRF token');
+            }
+
+            $findingId = intval($_POST['finding_id']);
+            
+            $finding = getFindingForUser($pdo, $findingId, $userId);
+            if (!$finding) {
+                throw new Exception('Finding not found or access denied');
+            }
+
+            $stmt = $pdo->prepare("UPDATE findings SET remediation_status = 'Resolved', updated_at = NOW() WHERE id = ?");
+            $stmt->execute([$findingId]);
+
+            updateAuditMetrics($pdo, (int)$finding['audit_id']);
+            logAction($pdo, $userId, 'CLOSE_FINDING', 'findings', $findingId);
+
+            echo json_encode(['success' => true, 'message' => 'Finding closed successfully']);
+            break;
+
+        case 'reopen_finding':
+            // Auditor reopens a finding (mark as Open again)
+            requireWriteAccess();
+            
+            $findingId = intval($_POST['finding_id']);
+            
+            $finding = getFindingForUser($pdo, $findingId, $userId);
+            if (!$finding) {
+                throw new Exception('Finding not found or access denied');
+            }
+
+            $stmt = $pdo->prepare("UPDATE findings SET remediation_status = 'Open', updated_at = NOW() WHERE id = ?");
+            $stmt->execute([$findingId]);
+
+            // Notify auditee that finding was reopened
+            $auditId = (int)$finding['audit_id'];
+            $stmtAuditees = $pdo->prepare("SELECT auditee_user_id FROM audit_auditees WHERE audit_id = ?");
+            $stmtAuditees->execute([$auditId]);
+            $auditees = $stmtAuditees->fetchAll(PDO::FETCH_COLUMN);
+            foreach ($auditees as $auditeeId) {
+                createNotification($pdo, $auditeeId, $auditId, 'finding_reopened', 
+                    "Finding reopened — additional action required.");
+            }
+
+            updateAuditMetrics($pdo, $auditId);
+            logAction($pdo, $userId, 'REOPEN_FINDING', 'findings', $findingId);
+
+            echo json_encode(['success' => true, 'message' => 'Finding reopened']);
+            break;
+
+        case 'list':
+            // List findings for an audit (accessible by auditor + assigned auditee)
+            $auditId = intval($_GET['audit_id']);
+            $role = $_SESSION['user_role'] ?? 'auditor';
+
+            if ($role === 'auditee') {
+                if (!isAuditeeAssigned($pdo, $auditId, $userId)) {
+                    throw new Exception('You are not assigned to this audit');
+                }
+            } else {
+                $stmt = $pdo->prepare("SELECT a.id FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ? AND o.user_id = ?");
+                $stmt->execute([$auditId, $userId]);
+                if (!$stmt->fetch()) {
+                    throw new Exception('Audit session not found or access denied');
+                }
+            }
+
+            $stmt = $pdo->prepare("SELECT f.*, a.asset_name, 
+                                   u.name as responder_name
+                                   FROM findings f
+                                   JOIN assets a ON f.asset_id = a.id
+                                   LEFT JOIN users u ON f.responded_by = u.id
+                                   WHERE f.audit_id = ?
+                                   ORDER BY f.risk_score DESC, f.created_at DESC");
+            $stmt->execute([$auditId]);
+            $findings = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            echo json_encode(['success' => true, 'data' => $findings]);
             break;
 
         default:

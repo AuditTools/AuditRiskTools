@@ -24,7 +24,7 @@ function requireLogin() {
 /**
  * Login user with session regeneration (prevents session fixation)
  */
-function loginUser($userId, $userEmail, $userName) {
+function loginUser($userId, $userEmail, $userName, $userRole = 'auditor') {
     // Regenerate session ID to prevent session fixation attacks
     session_regenerate_id(true);
     
@@ -32,6 +32,7 @@ function loginUser($userId, $userEmail, $userName) {
     $_SESSION['user_id'] = $userId;
     $_SESSION['user_email'] = $userEmail;
     $_SESSION['user_name'] = $userName;
+    $_SESSION['user_role'] = $userRole;
     $_SESSION['login_time'] = time();
     $_SESSION['last_activity'] = time();
     
@@ -307,5 +308,110 @@ function requireAuditor() {
         http_response_code(403);
         die('Access denied. Auditor role required.');
     }
+}
+
+/**
+ * Check if current session user can write (admin or auditor).
+ * For use in API endpoints — returns false for auditee.
+ */
+function canWrite() {
+    $role = $_SESSION['user_role'] ?? 'auditee';
+    return in_array($role, ['admin', 'auditor'], true);
+}
+
+/**
+ * Block write operations for auditee role (API JSON response).
+ * Call this at the top of any add/update/delete action.
+ */
+function requireWriteAccess() {
+    if (!canWrite()) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Access denied. Auditee role is read-only.']);
+        exit();
+    }
+}
+
+/**
+ * Check if auditee is assigned to a specific audit session.
+ */
+function isAuditeeAssigned($pdo, $auditId, $userId = null) {
+    if ($userId === null) {
+        $userId = $_SESSION['user_id'] ?? 0;
+    }
+    $stmt = $pdo->prepare("SELECT id FROM audit_auditees WHERE audit_id = ? AND auditee_user_id = ?");
+    $stmt->execute([$auditId, $userId]);
+    return (bool)$stmt->fetch();
+}
+
+/**
+ * Get all audit IDs assigned to an auditee.
+ */
+function getAuditeeAssignedAudits($pdo, $userId = null) {
+    if ($userId === null) {
+        $userId = $_SESSION['user_id'] ?? 0;
+    }
+    $stmt = $pdo->prepare("SELECT audit_id FROM audit_auditees WHERE auditee_user_id = ?");
+    $stmt->execute([$userId]);
+    return $stmt->fetchAll(PDO::FETCH_COLUMN);
+}
+
+/**
+ * Verify audit access for any role:
+ * - Admin/Auditor: must own org
+ * - Auditee: must be assigned
+ * Returns true/false.
+ */
+function canAccessAudit($pdo, $auditId, $userId = null) {
+    if ($userId === null) {
+        $userId = $_SESSION['user_id'] ?? 0;
+    }
+    $role = $_SESSION['user_role'] ?? 'auditor';
+
+    if ($role === 'auditee') {
+        return isAuditeeAssigned($pdo, $auditId, $userId);
+    }
+
+    // Admin/Auditor: verify through org ownership
+    $stmt = $pdo->prepare("SELECT a.id FROM audit_sessions a 
+                           JOIN organizations o ON a.organization_id = o.id 
+                           WHERE a.id = ? AND o.user_id = ?");
+    $stmt->execute([$auditId, $userId]);
+    return (bool)$stmt->fetch();
+}
+
+/**
+ * Create a notification for a user.
+ */
+function createNotification($pdo, $userId, $auditId, $type, $message) {
+    try {
+        $stmt = $pdo->prepare("INSERT INTO notifications (user_id, audit_id, type, message) VALUES (?, ?, ?, ?)");
+        $stmt->execute([$userId, $auditId, $type, $message]);
+    } catch (Exception $e) {
+        error_log("Failed to create notification: " . $e->getMessage());
+    }
+}
+
+/**
+ * Get unread notifications count for a user.
+ */
+function getUnreadNotificationCount($pdo, $userId = null) {
+    if ($userId === null) {
+        $userId = $_SESSION['user_id'] ?? 0;
+    }
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0");
+    $stmt->execute([$userId]);
+    return (int)$stmt->fetchColumn();
+}
+
+/**
+ * Get notifications for a user.
+ */
+function getNotifications($pdo, $userId = null, $limit = 20) {
+    if ($userId === null) {
+        $userId = $_SESSION['user_id'] ?? 0;
+    }
+    $stmt = $pdo->prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ?");
+    $stmt->execute([$userId, $limit]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 ?>

@@ -35,8 +35,8 @@ try {
                 throw new Exception('Too many login attempts. Please try again later.');
             }
             
-            // Get user from database
-            $stmt = $pdo->prepare("SELECT id, name, email, password_hash, is_active, failed_login_attempts 
+            // Get user from database (include role)
+            $stmt = $pdo->prepare("SELECT id, name, email, password_hash, role, is_active, failed_login_attempts 
                                   FROM users WHERE email = ?");
             $stmt->execute([$email]);
             $user = $stmt->fetch();
@@ -75,14 +75,15 @@ try {
                                   WHERE id = ?");
             $stmt->execute([$user['id']]);
             
-            // Set session with security measures
-            loginUser($user['id'], $user['email'], $user['name']);
+            // Set session with security measures (include role)
+            loginUser($user['id'], $user['email'], $user['name'], $user['role'] ?? 'auditor');
             
             logSecurityEvent($pdo, $user['id'], 'LOGIN_SUCCESS', 'User logged in successfully');
             
             echo json_encode([
                 'success' => true,
                 'message' => 'Login successful',
+                'role' => $user['role'] ?? 'auditor',
                 'redirect' => 'dashboard.php'
             ]);
             break;
@@ -117,14 +118,19 @@ try {
             // Hash password
             $passwordHash = password_hash($password, PASSWORD_DEFAULT);
             
-            // Insert user
-            $stmt = $pdo->prepare("INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)");
-            $stmt->execute([$name, $email, $passwordHash]);
+            // Self-registration is auditor-only.
+            // Auditee accounts are created by auditors via audit management.
+            // Admin accounts are created by existing admins via User Management.
+            $role = 'auditor';
+            
+            // Insert user with role
+            $stmt = $pdo->prepare("INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$name, $email, $passwordHash, $role]);
             
             $userId = $pdo->lastInsertId();
             
             // Auto-login after registration
-            loginUser($userId, $email, $name);
+            loginUser($userId, $email, $name, $role);
             
             logSecurityEvent($pdo, $userId, 'USER_REGISTERED', 'New user registered');
             

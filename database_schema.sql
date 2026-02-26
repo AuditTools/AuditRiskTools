@@ -174,6 +174,9 @@ CREATE TABLE assets (
     owner VARCHAR(100),
     department VARCHAR(100),
     
+    -- Registered by (auditee who registered the asset)
+    registered_by INT NULL,
+    
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
@@ -223,6 +226,11 @@ CREATE TABLE findings (
     remediation_status ENUM('Open','In Progress','Resolved','Accepted Risk') DEFAULT 'Open',
     remediation_deadline DATE,
     
+    -- Management response (auditee)
+    management_response TEXT NULL,
+    response_date TIMESTAMP NULL,
+    responded_by INT NULL,
+    
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
@@ -256,6 +264,9 @@ CREATE TABLE audit_evidence (
     -- Evidence metadata
     evidence_type ENUM('Screenshot','Document','Configuration','Policy','Other') DEFAULT 'Other',
     description TEXT,
+    
+    -- Uploaded by (user who uploaded the evidence)
+    uploaded_by INT NULL,
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
@@ -434,6 +445,150 @@ Strategic indexes added for:
 4. Create materialized views for dashboard metrics
 5. Implement archival strategy for old audit sessions
 */
+
+-- ====================================================
+-- 10️⃣ CONTROL CHECKLIST TABLE
+-- ====================================================
+-- AUDIT AUDITEES TABLE
+-- ====================================================
+-- Links auditee users to specific audit sessions
+-- Auditors (or admins) assign auditees; auditees see only their assigned audits
+-- ====================================================
+CREATE TABLE IF NOT EXISTS audit_auditees (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    audit_id INT NOT NULL,
+    auditee_user_id INT NOT NULL,
+    assigned_by INT NOT NULL,
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (audit_id) REFERENCES audit_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (auditee_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (assigned_by) REFERENCES users(id) ON DELETE CASCADE,
+
+    UNIQUE KEY uq_audit_auditee (audit_id, auditee_user_id),
+    INDEX idx_auditee_user (auditee_user_id),
+    INDEX idx_audit_id (audit_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ====================================================
+-- EVIDENCE UPLOADS TABLE
+-- ====================================================
+-- Stores evidence files uploaded by auditees (or auditors)
+-- Can be linked to a specific finding or to an audit in general
+-- ====================================================
+CREATE TABLE IF NOT EXISTS evidence_uploads (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    audit_id INT NOT NULL,
+    finding_id INT NULL,
+    uploaded_by INT NOT NULL,
+
+    file_name VARCHAR(255) NOT NULL,
+    original_name VARCHAR(255) NOT NULL,
+    file_type VARCHAR(100),
+    file_size INT,
+    description TEXT NULL,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (audit_id) REFERENCES audit_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (finding_id) REFERENCES findings(id) ON DELETE SET NULL,
+    FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE,
+
+    INDEX idx_audit_id (audit_id),
+    INDEX idx_finding_id (finding_id),
+    INDEX idx_uploaded_by (uploaded_by)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ====================================================
+-- Stores NIST CSF control audit results per audit session
+-- Auditor marks each control as Compliant / Partially / Non-Compliant / N/A
+-- ====================================================
+CREATE TABLE IF NOT EXISTS control_checklist (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    audit_id INT NOT NULL,
+    control_id VARCHAR(20) NOT NULL,
+
+    -- Compliance status
+    status ENUM('Not Assessed','Compliant','Partially Compliant','Non-Compliant','Not Applicable')
+        DEFAULT 'Not Assessed',
+
+    -- Auditor notes / evidence description
+    notes TEXT NULL,
+
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (audit_id) REFERENCES audit_sessions(id) ON DELETE CASCADE,
+    UNIQUE KEY uq_audit_control (audit_id, control_id),
+    INDEX idx_audit_id (audit_id),
+    INDEX idx_control_status (audit_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ====================================================
+-- 11️⃣ AUDIT AUDITEES TABLE
+-- ====================================================
+-- Maps auditee users to audit sessions
+-- Auditors assign auditees to specific audits
+-- ====================================================
+CREATE TABLE audit_auditees (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    audit_id INT NOT NULL,
+    user_id INT NOT NULL,
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (audit_id) REFERENCES audit_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY uq_audit_user (audit_id, user_id),
+    INDEX idx_audit_id (audit_id),
+    INDEX idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ====================================================
+-- 12️⃣ EVIDENCE UPLOADS TABLE
+-- ====================================================
+-- Tracks evidence files uploaded by auditees
+-- Separate from audit_evidence for cleaner tracking
+-- ====================================================
+CREATE TABLE evidence_uploads (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    audit_id INT NOT NULL,
+    finding_id INT NULL,
+    user_id INT NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    file_type VARCHAR(100),
+    file_size INT,
+    description TEXT,
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (audit_id) REFERENCES audit_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (finding_id) REFERENCES findings(id) ON DELETE SET NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_audit_id (audit_id),
+    INDEX idx_user_id (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ====================================================
+-- 13️⃣ NOTIFICATIONS TABLE
+-- ====================================================
+-- In-app notifications for workflow events
+-- Notifies auditees of assignments, finding updates, etc.
+-- ====================================================
+CREATE TABLE notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    audit_id INT NULL,
+    type VARCHAR(50) NOT NULL,
+    message TEXT NOT NULL,
+    is_read TINYINT(1) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (audit_id) REFERENCES audit_sessions(id) ON DELETE CASCADE,
+    INDEX idx_user_unread (user_id, is_read),
+    INDEX idx_audit_id (audit_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ====================================================
 -- INITIAL DATA (OPTIONAL)

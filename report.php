@@ -8,33 +8,77 @@ require_once 'functions/report.php';
 requireLogin();
 
 $userId = $_SESSION['user_id'];
+$userRole = $_SESSION['user_role'] ?? 'auditor';
 $audit_id = intval($_GET['audit_id'] ?? ($_SESSION['active_audit_id'] ?? 0));
 $selectedOrgId = intval($_GET['org_id'] ?? 0);
 $pageError = '';
 $reportData = null;
 
-$stmtOrgList = $pdo->prepare("SELECT id, organization_name FROM organizations WHERE user_id = ? AND is_active = 1 ORDER BY organization_name ASC");
-$stmtOrgList->execute([$userId]);
-$organizations = $stmtOrgList->fetchAll(PDO::FETCH_ASSOC);
+$organizations = [];
+$allAudits = [];
 
-$stmtAuditList = $pdo->prepare("SELECT a.id, a.organization_id, a.session_name, a.audit_date, o.organization_name FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE o.user_id = ? ORDER BY a.audit_date DESC, a.created_at DESC");
-$stmtAuditList->execute([$userId]);
-$allAudits = $stmtAuditList->fetchAll(PDO::FETCH_ASSOC);
+if ($userRole === 'auditee') {
+    $assignedIds = getAuditeeAssignedAudits($pdo, $userId);
+    if (!empty($assignedIds)) {
+        $placeholders = implode(',', array_fill(0, count($assignedIds), '?'));
+        $stmtAuditList = $pdo->prepare("SELECT a.id, a.organization_id, a.session_name, a.audit_date, o.organization_name FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id IN ($placeholders) ORDER BY a.audit_date DESC, a.created_at DESC");
+        $stmtAuditList->execute($assignedIds);
+        $allAudits = $stmtAuditList->fetchAll(PDO::FETCH_ASSOC);
+        $orgIds = array_unique(array_column($allAudits, 'organization_id'));
+        if (!empty($orgIds)) {
+            $orgPlaceholders = implode(',', array_fill(0, count($orgIds), '?'));
+            $stmtOrgList = $pdo->prepare("SELECT id, organization_name FROM organizations WHERE id IN ($orgPlaceholders) ORDER BY organization_name ASC");
+            $stmtOrgList->execute(array_values($orgIds));
+            $organizations = $stmtOrgList->fetchAll(PDO::FETCH_ASSOC);
+        }
+    }
+} elseif ($userRole === 'admin') {
+    $stmtOrgList = $pdo->prepare("SELECT id, organization_name FROM organizations WHERE is_active = 1 ORDER BY organization_name ASC");
+    $stmtOrgList->execute();
+    $organizations = $stmtOrgList->fetchAll(PDO::FETCH_ASSOC);
+    $stmtAuditList = $pdo->prepare("SELECT a.id, a.organization_id, a.session_name, a.audit_date, o.organization_name FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id ORDER BY a.audit_date DESC, a.created_at DESC");
+    $stmtAuditList->execute();
+    $allAudits = $stmtAuditList->fetchAll(PDO::FETCH_ASSOC);
+} else {
+    $stmtOrgList = $pdo->prepare("SELECT id, organization_name FROM organizations WHERE user_id = ? AND is_active = 1 ORDER BY organization_name ASC");
+    $stmtOrgList->execute([$userId]);
+    $organizations = $stmtOrgList->fetchAll(PDO::FETCH_ASSOC);
+    $stmtAuditList = $pdo->prepare("SELECT a.id, a.organization_id, a.session_name, a.audit_date, o.organization_name FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE o.user_id = ? ORDER BY a.audit_date DESC, a.created_at DESC");
+    $stmtAuditList->execute([$userId]);
+    $allAudits = $stmtAuditList->fetchAll(PDO::FETCH_ASSOC);
+}
 
 if ($audit_id > 0) {
-    $stmtAccess = $pdo->prepare("SELECT a.id, a.organization_id FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ? AND o.user_id = ?");
-    $stmtAccess->execute([$audit_id, $userId]);
-    $access = $stmtAccess->fetch(PDO::FETCH_ASSOC);
-
-    if (!$access) {
-        $pageError = 'Audit not found or access denied.';
-        $audit_id = 0;
-        unset($_SESSION['active_audit_id']);
+    // Role-based access check
+    if ($userRole === 'auditee') {
+        if (!isAuditeeAssigned($pdo, $audit_id, $userId)) {
+            $pageError = 'Audit not found or access denied.';
+            $audit_id = 0;
+            unset($_SESSION['active_audit_id']);
+        }
+    } elseif ($userRole === 'admin') {
+        // Admin can view any audit - just verify it exists
+        $stmtAccess = $pdo->prepare("SELECT id FROM audit_sessions WHERE id = ?");
+        $stmtAccess->execute([$audit_id]);
+        if (!$stmtAccess->fetch()) {
+            $pageError = 'Audit not found.';
+            $audit_id = 0;
+            unset($_SESSION['active_audit_id']);
+        }
     } else {
-        $selectedOrgId = intval($access['organization_id']);
+        $stmtAccess = $pdo->prepare("SELECT a.id, a.organization_id FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ? AND o.user_id = ?");
+        $stmtAccess->execute([$audit_id, $userId]);
+        if (!$stmtAccess->fetch()) {
+            $pageError = 'Audit not found or access denied.';
+            $audit_id = 0;
+            unset($_SESSION['active_audit_id']);
+        }
+    }
+
+    if ($audit_id > 0) {
         $_SESSION['active_audit_id'] = $audit_id;
         updateAuditMetrics($pdo, $audit_id);
-        $reportData = getReportData($pdo, $audit_id, $userId);
+        $reportData = getReportData($pdo, $audit_id, $userId, $userRole);
     }
 }
 
@@ -96,8 +140,10 @@ include 'includes/sidebar.php';
     <?php elseif ($reportData): ?>
         <div class="d-flex flex-wrap gap-2 mb-3">
             <a class="btn btn-outline-secondary" href="api/report_actions.php?action=preview&audit_id=<?= intval($audit_id) ?>" target="_blank">Open Full Preview</a>
-            <a class="btn btn-outline-primary" href="api/report_actions.php?action=download_pdf&audit_id=<?= intval($audit_id) ?>">Download PDF</a>
-            <button class="btn btn-outline-dark" id="aiSummaryBtn" type="button">Generate AI Summary</button>
+            <?php if ($userRole === 'auditor'): ?>
+                <a class="btn btn-outline-primary" href="api/report_actions.php?action=download_pdf&audit_id=<?= intval($audit_id) ?>">Download PDF</a>
+                <button class="btn btn-outline-dark" id="aiSummaryBtn" type="button">Generate AI Summary</button>
+            <?php endif; ?>
         </div>
 
         <div class="report-card" id="aiSummaryCard">
@@ -108,7 +154,8 @@ include 'includes/sidebar.php';
         <div class="report-card">
             <h4>🔐 Audit Opinion</h4>
             <?php 
-                $opinion = calculateAuditOpinion($pdo, $audit_id);
+                $opinionData = calculateAuditOpinion($pdo, $audit_id);
+                $opinion = $opinionData['opinion'];
                 $opinionClass = $opinion === 'Secure' ? 'badge-srm-success' : ($opinion === 'Acceptable Risk' ? 'badge-srm-warning' : 'badge-srm-danger');
             ?>
             <h3 class="text-center">
@@ -117,10 +164,17 @@ include 'includes/sidebar.php';
                 </span>
             </h3>
             <p class="text-center text-muted">
-                Based on compliance (<?= number_format((float)($reportData['audit']['compliance_percentage'] ?? 0), 2) ?>%), 
-                risk level (<?= htmlspecialchars($reportData['audit']['final_risk_level'] ?? 'Low') ?>), 
-                and exposure (<?= htmlspecialchars($reportData['audit']['exposure_level'] ?? 'Low') ?>)
+                Based on compliance (<?= number_format($opinionData['compliance'], 2) ?>%), 
+                open Critical findings (<?= $opinionData['open_critical'] ?>), 
+                open High findings (<?= $opinionData['open_high'] ?>)
             </p>
+            <div class="text-center mt-2">
+                <small class="text-muted">
+                    <strong>Secure:</strong> ≥85% compliance &amp; no open High/Critical |
+                    <strong>Acceptable:</strong> 60-84% compliance |
+                    <strong>Immediate:</strong> &lt;60% compliance or any open Critical
+                </small>
+            </div>
         </div>
 
         <div class="report-card">

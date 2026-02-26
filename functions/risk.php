@@ -76,7 +76,7 @@ function updateAuditMetrics($pdo, $auditId) {
         $compliance['percentage'], $compliance['maturity'],
         $auditId
     ]);
-
+    
     // H. Return data for Dashboard rendering
     return [
         'avg_asset_criticality' => round($avg_asset_criticality, 2),
@@ -103,7 +103,7 @@ function calculateCriticalityLevel($score) {
 
 // 4. HELPER: Calculate Compliance & Maturity Indicator 
 function getComplianceAndMaturity($pdo, $auditId) {
-    // Per PDF formula: Total Compliant / Total Findings * 100
+    // --- Source 1: Findings-based compliance ---
     $stmt = $pdo->prepare("
         SELECT 
             SUM(CASE WHEN audit_status='Compliant' THEN 1 ELSE 0 END) as compliant_count,
@@ -113,11 +113,43 @@ function getComplianceAndMaturity($pdo, $auditId) {
     $stmt->execute([$auditId]);
     $res = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    $total = (int)$res['total'];
-    $compliant = (int)$res['compliant_count'];
-    
-    // If there are no findings yet, assume 100% compliant
-    $percentage = ($total > 0) ? round(($compliant / $total) * 100, 2) : 100.0;
+    $findingsTotal     = (int)$res['total'];
+    $findingsCompliant = (int)$res['compliant_count'];
+
+    // --- Source 2: NIST CSF Control Checklist compliance ---
+    $checklistPct = null; // null = no checklist data yet
+    $stmtCL = $pdo->prepare("
+        SELECT status, COUNT(*) as cnt 
+        FROM control_checklist 
+        WHERE audit_id = ? 
+        GROUP BY status
+    ");
+    $stmtCL->execute([$auditId]);
+    $clRows = $stmtCL->fetchAll(PDO::FETCH_KEY_PAIR);
+
+    $clTotal = array_sum($clRows);
+    if ($clTotal > 0) {
+        $clCompliant = (int)($clRows['Compliant'] ?? 0);
+        $clPartial   = (int)($clRows['Partially Compliant'] ?? 0);
+        $clNA        = (int)($clRows['Not Applicable'] ?? 0);
+        $clApplicable = $clTotal - $clNA;
+        if ($clApplicable > 0) {
+            $checklistPct = round((($clCompliant + $clPartial * 0.5) / $clApplicable) * 100, 2);
+        }
+    }
+
+    // --- Blend: weighted average if both exist, otherwise use what's available ---
+    if ($findingsTotal > 0 && $checklistPct !== null) {
+        $findingsPct = round(($findingsCompliant / $findingsTotal) * 100, 2);
+        // 40% findings + 60% checklist (checklist carries more weight as it covers full NIST)
+        $percentage = round($findingsPct * 0.4 + $checklistPct * 0.6, 2);
+    } elseif ($checklistPct !== null) {
+        $percentage = $checklistPct;
+    } elseif ($findingsTotal > 0) {
+        $percentage = round(($findingsCompliant / $findingsTotal) * 100, 2);
+    } else {
+        $percentage = 100.0;
+    }
 
     // Maturity Classification per PDF 
     if ($percentage <= 40) $maturity = 'Initial';
@@ -129,37 +161,47 @@ function getComplianceAndMaturity($pdo, $auditId) {
 }
 
 // 5. HELPER: Calculate Audit Opinion (P0)
+// Formula (finalized):
+//   Secure      → compliance ≥85% AND no open High/Critical findings
+//   Acceptable  → compliance 60–84% OR ≤2 open High findings (no Critical)
+//   Immediate   → compliance <60% OR any open Critical finding
 function calculateAuditOpinion($pdo, $auditId) {
-    $stmt = $pdo->prepare("SELECT 
-        compliance_percentage,
-        final_risk_level,
-        exposure_level
-        FROM audit_sessions WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT compliance_percentage FROM audit_sessions WHERE id = ?");
     $stmt->execute([$auditId]);
     $audit = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$audit) {
-        return 'Unknown';
+        return ['opinion' => 'Unknown', 'compliance' => 0, 'open_critical' => 0, 'open_high' => 0];
     }
     
     $compliance = (float)$audit['compliance_percentage'];
-    $risk = $audit['final_risk_level'];
-    $exposure = $audit['exposure_level'];
     
-    // Opinion Logic:
-    // 1. If compliance >= 80% AND risk <= Medium AND exposure <= Medium → "Secure"
-    // 2. If compliance >= 60% AND risk <= High AND exposure <= High → "Acceptable Risk" 
-    // 3. Otherwise → "Needs Action"
+    // Count open (non-resolved) High and Critical findings
+    $stmt = $pdo->prepare("SELECT 
+        SUM(CASE WHEN risk_level = 'Critical' AND remediation_status NOT IN ('Resolved','Accepted Risk') THEN 1 ELSE 0 END) AS open_critical,
+        SUM(CASE WHEN risk_level = 'High' AND remediation_status NOT IN ('Resolved','Accepted Risk') THEN 1 ELSE 0 END) AS open_high
+        FROM findings WHERE audit_id = ?");
+    $stmt->execute([$auditId]);
+    $counts = $stmt->fetch(PDO::FETCH_ASSOC);
+    $openCritical = (int)($counts['open_critical'] ?? 0);
+    $openHigh = (int)($counts['open_high'] ?? 0);
     
-    if ($compliance >= 80 && $risk !== 'Critical' && $exposure !== 'High') {
-        return 'Secure';
+    // Determine opinion
+    if ($openCritical > 0 || $compliance < 60) {
+        $opinion = 'Immediate Action Required';
+    } elseif ($compliance >= 85 && $openHigh === 0) {
+        $opinion = 'Secure';
+    } else {
+        // 60-84% range OR ≤2 High open
+        $opinion = 'Acceptable Risk';
     }
     
-    if ($compliance >= 60 && $risk !== 'Critical') {
-        return 'Acceptable Risk';
-    }
-    
-    return 'Needs Action';
+    return [
+        'opinion' => $opinion,
+        'compliance' => $compliance,
+        'open_critical' => $openCritical,
+        'open_high' => $openHigh
+    ];
 }
 
 // 6. HELPER: Build Risk Matrix data for visualization

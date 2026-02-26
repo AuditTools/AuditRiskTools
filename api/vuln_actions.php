@@ -20,6 +20,12 @@ if (!isLoggedIn()) {
 $userId = $_SESSION['user_id'];
 $action = $_GET['action'] ?? '';
 
+// Block auditee from write operations
+$writeActions = ['assess', 'remove'];
+if (in_array($action, $writeActions, true)) {
+    requireWriteAccess();
+}
+
 try {
     switch ($action) {
 

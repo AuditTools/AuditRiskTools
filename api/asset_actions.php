@@ -19,6 +19,12 @@ if (!isLoggedIn()) {
 $userId = $_SESSION['user_id'];
 $action = $_GET['action'] ?? '';
 
+// Block auditee from standard write operations (but allow auditee_add)
+$writeActions = ['add', 'update', 'delete'];
+if (in_array($action, $writeActions, true)) {
+    requireWriteAccess();
+}
+
 try {
     switch ($action) {
         case 'add':
@@ -208,16 +214,24 @@ try {
         case 'list':
             // List all assets for audit
             $auditId = intval($_GET['audit_id']);
+            $role = $_SESSION['user_role'] ?? 'auditor';
             
-            // Verify audit ownership
-            $stmt = $pdo->prepare("SELECT a.id 
-                                  FROM audit_sessions a 
-                                  JOIN organizations o ON a.organization_id = o.id 
-                                  WHERE a.id = ? AND o.user_id = ?");
-            $stmt->execute([$auditId, $userId]);
-            
-            if (!$stmt->fetch()) {
-                throw new Exception('Audit session not found or access denied');
+            if ($role === 'auditee') {
+                // Check auditee is assigned
+                if (!isAuditeeAssigned($pdo, $auditId, $userId)) {
+                    throw new Exception('You are not assigned to this audit');
+                }
+            } else {
+                // Verify audit ownership
+                $stmt = $pdo->prepare("SELECT a.id 
+                                      FROM audit_sessions a 
+                                      JOIN organizations o ON a.organization_id = o.id 
+                                      WHERE a.id = ? AND o.user_id = ?");
+                $stmt->execute([$auditId, $userId]);
+                
+                if (!$stmt->fetch()) {
+                    throw new Exception('Audit session not found or access denied');
+                }
             }
             
             $stmt = $pdo->prepare("SELECT * FROM assets WHERE audit_id = ? ORDER BY criticality_score DESC");
@@ -225,6 +239,117 @@ try {
             $assets = $stmt->fetchAll();
             
             echo json_encode(['success' => true, 'data' => $assets]);
+            break;
+
+        case 'auditee_add':
+            // Auditee registers an asset (basic info only, CIA defaults to 1)
+            $role = $_SESSION['user_role'] ?? 'auditor';
+            if ($role !== 'auditee') {
+                throw new Exception('This action is for auditees only');
+            }
+
+            if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+                throw new Exception('Invalid CSRF token');
+            }
+
+            $auditId = intval($_POST['audit_id']);
+            
+            // Verify auditee is assigned to this audit
+            if (!isAuditeeAssigned($pdo, $auditId, $userId)) {
+                throw new Exception('You are not assigned to this audit');
+            }
+
+            $assetName = trim($_POST['asset_name']);
+            $ipAddress = trim($_POST['ip_address'] ?? '');
+            $assetType = trim($_POST['asset_type'] ?? '');
+            $description = trim($_POST['description'] ?? '');
+            $owner = trim($_POST['owner'] ?? '');
+            $department = trim($_POST['department'] ?? '');
+
+            if (!$assetName) {
+                throw new Exception('Asset name is required');
+            }
+
+            // Default CIA to 1 (auditor will set real values)
+            $c = 1; $i = 1; $a = 1;
+            $criticalityScore = 1.0;
+            $criticalityLevel = 'Low';
+
+            $stmt = $pdo->prepare("INSERT INTO assets 
+                (audit_id, asset_name, ip_address, asset_type, description, owner, department,
+                 confidentiality, integrity, availability, criticality_score, criticality_level, registered_by) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([
+                $auditId, $assetName, $ipAddress, $assetType, $description, $owner, $department,
+                $c, $i, $a, $criticalityScore, $criticalityLevel, $userId
+            ]);
+
+            $assetId = $pdo->lastInsertId();
+
+            // Notify the auditor (org owner) about new asset
+            $stmt = $pdo->prepare("SELECT o.user_id, a.session_name FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ?");
+            $stmt->execute([$auditId]);
+            $auditInfo = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($auditInfo) {
+                $userName = $_SESSION['user_name'] ?? 'Auditee';
+                createNotification($pdo, $auditInfo['user_id'], $auditId, 'asset_registered', 
+                    "$userName registered asset: $assetName in " . $auditInfo['session_name']);
+            }
+
+            logAction($pdo, $userId, 'AUDITEE_ADD_ASSET', 'assets', $assetId);
+
+            echo json_encode([
+                'success' => true, 
+                'message' => 'Asset registered successfully. CIA ratings pending auditor review.',
+                'asset_id' => $assetId
+            ]);
+            break;
+
+        case 'update_cia':
+            // Auditor sets/updates CIA ratings for an asset
+            requireWriteAccess();
+
+            if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+                throw new Exception('Invalid CSRF token');
+            }
+
+            $assetId = intval($_POST['id']);
+            $confidentiality = intval($_POST['confidentiality']);
+            $integrity = intval($_POST['integrity']);
+            $availability = intval($_POST['availability']);
+
+            if ($confidentiality < 1 || $confidentiality > 5 ||
+                $integrity < 1 || $integrity > 5 ||
+                $availability < 1 || $availability > 5) {
+                throw new Exception('CIA ratings must be between 1 and 5');
+            }
+
+            // Verify ownership
+            $stmt = $pdo->prepare("SELECT a.audit_id 
+                                  FROM assets a 
+                                  JOIN audit_sessions au ON a.audit_id = au.id 
+                                  JOIN organizations o ON au.organization_id = o.id 
+                                  WHERE a.id = ? AND o.user_id = ?");
+            $stmt->execute([$assetId, $userId]);
+            $asset = $stmt->fetch();
+
+            if (!$asset) {
+                throw new Exception('Asset not found or access denied');
+            }
+
+            $criticalityScore = ($confidentiality + $integrity + $availability) / 3;
+            $criticalityLevel = calculateCriticalityLevel($criticalityScore);
+
+            $stmt = $pdo->prepare("UPDATE assets 
+                SET confidentiality = ?, integrity = ?, availability = ?,
+                    criticality_score = ?, criticality_level = ?, updated_at = NOW()
+                WHERE id = ?");
+            $stmt->execute([$confidentiality, $integrity, $availability, $criticalityScore, $criticalityLevel, $assetId]);
+
+            updateAuditMetrics($pdo, $asset['audit_id']);
+            logAction($pdo, $userId, 'UPDATE_CIA', 'assets', $assetId);
+
+            echo json_encode(['success' => true, 'message' => 'CIA ratings updated']);
             break;
             
         default:
