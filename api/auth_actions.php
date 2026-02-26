@@ -22,6 +22,10 @@ $action = $_GET['action'] ?? '';
 try {
     switch ($action) {
         case 'login':
+            if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+                throw new Exception('Invalid CSRF token');
+            }
+
             // Handle login
             $email = filter_var(trim($_POST['email']), FILTER_VALIDATE_EMAIL);
             $password = $_POST['password'] ?? '';
@@ -89,6 +93,10 @@ try {
             break;
             
         case 'register':
+            if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+                throw new Exception('Invalid CSRF token');
+            }
+
             // Handle registration
             $name = sanitizeInput($_POST['name'] ?? '');
             $email = filter_var(trim($_POST['email']), FILTER_VALIDATE_EMAIL);
@@ -177,6 +185,10 @@ try {
             // Change password (requires authentication)
             if (!isLoggedIn()) {
                 throw new Exception('Unauthorized');
+            }
+
+            if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+                throw new Exception('Invalid CSRF token');
             }
             
             $userId = $_SESSION['user_id'];

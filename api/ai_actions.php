@@ -56,16 +56,27 @@ try {
             // Generate AI Audit Report
             $auditId = intval($_POST['audit_id']);
             
-            // Verify ownership and get audit data
-            $stmt = $pdo->prepare("
-                SELECT a.*, o.organization_name, o.industry, o.user_id
-                FROM audit_sessions a 
-                JOIN organizations o ON a.organization_id = o.id 
-                WHERE a.id = ? AND o.user_id = ?
-            ");
+            // Verify access: owner OR assigned auditee
+            $userRole = $_SESSION['user_role'] ?? 'auditor';
+            if ($userRole === 'auditee') {
+                $stmt = $pdo->prepare("
+                    SELECT a.*, o.organization_name, o.industry, o.user_id
+                    FROM audit_sessions a
+                    JOIN organizations o ON a.organization_id = o.id
+                    JOIN audit_auditees aa ON aa.audit_id = a.id
+                    WHERE a.id = ? AND aa.auditee_user_id = ?
+                ");
+            } else {
+                $stmt = $pdo->prepare("
+                    SELECT a.*, o.organization_name, o.industry, o.user_id
+                    FROM audit_sessions a
+                    JOIN organizations o ON a.organization_id = o.id
+                    WHERE a.id = ? AND o.user_id = ?
+                ");
+            }
             $stmt->execute([$auditId, $userId]);
             $audit = $stmt->fetch();
-            
+
             if (!$audit) {
                 throw new Exception('Audit session not found or access denied');
             }

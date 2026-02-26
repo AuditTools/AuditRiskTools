@@ -108,11 +108,12 @@ try {
 
 <div class="card shadow-sm mb-4">
 <div class="card-body">
-<h5 class="mb-3">Pilih Organization & Audit Session</h5>
+<h5 class="mb-3">Select Organization & Audit Session</h5>
 <form id="findingAuditSwitcher" class="row g-2">
+    <?php if ($userRole !== 'auditee'): ?>
     <div class="col-md-5">
         <select id="orgSelect" class="form-select">
-            <option value="">Semua Organization</option>
+            <option value="">All Organizations</option>
             <?php foreach ($organizations as $org): ?>
                 <option value="<?= intval($org['id']) ?>" <?= $selectedOrgId === intval($org['id']) ? 'selected' : '' ?>>
                     <?= htmlspecialchars($org['organization_name']) ?>
@@ -121,8 +122,11 @@ try {
         </select>
     </div>
     <div class="col-md-5">
+    <?php else: ?>
+    <div class="col-md-10">
+    <?php endif; ?>
         <select id="auditSelect" class="form-select">
-            <option value="">Pilih Audit Session</option>
+            <option value="">Select Audit Session</option>
             <?php foreach ($allAudits as $auditItem): ?>
                 <option value="<?= intval($auditItem['id']) ?>"
                         data-org-id="<?= intval($auditItem['organization_id']) ?>"
@@ -144,7 +148,7 @@ try {
 <?php endif; ?>
 
 <?php if (!$audit_id): ?>
-    <div class="alert alert-warning">Pilih audit session dulu untuk mengelola findings.</div>
+    <div class="alert alert-warning">Please select an audit session to view findings.</div>
 <?php else: ?>
 
 <?php if ($userRole === 'auditor'): ?>
@@ -347,15 +351,22 @@ try {
                 <span class="badge <?= $statusClass ?>"><?= htmlspecialchars($currentStatus) ?></span>
             </td>
             <?php if ($userRole === 'auditor'): ?>
-            <td style="min-width: 200px;">
+            <td style="min-width: 220px;">
                 <?php if ($currentStatus === 'In Progress' || $currentStatus === 'Open'): ?>
-                    <form class="closeFindingForm d-inline" data-finding-id="<?= intval($f['id']) ?>">
+                    <form class="closeFindingForm d-flex flex-wrap gap-1 align-items-center" data-finding-id="<?= intval($f['id']) ?>">
                         <input type="hidden" name="finding_id" value="<?= intval($f['id']) ?>">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCSRFToken()) ?>">
-                        <button type="submit" class="btn btn-sm btn-success" title="Close Finding">
+                        <input type="date" name="remediation_deadline"
+                               value="<?= htmlspecialchars($f['remediation_deadline'] ?? '') ?>"
+                               class="form-control form-control-sm close-date-input"
+                               style="width:130px" title="Enter resolved date first">
+                        <button type="submit" class="btn btn-sm btn-success close-btn"
+                                title="Mark as resolved"
+                                <?= empty($f['remediation_deadline']) ? 'disabled' : '' ?>>
                             <i class="fas fa-check"></i> Close
                         </button>
                     </form>
+                    <small class="text-muted" style="font-size:0.75rem;">Date required to close</small>
                 <?php endif; ?>
                 <?php if ($currentStatus === 'Resolved'): ?>
                     <form class="reopenFindingForm d-inline" data-finding-id="<?= intval($f['id']) ?>">
@@ -365,15 +376,10 @@ try {
                             <i class="fas fa-redo"></i> Reopen
                         </button>
                     </form>
+                    <?php if (!empty($f['remediation_deadline'])): ?>
+                        <small class="text-muted d-block mt-1"><?= date('d M Y', strtotime($f['remediation_deadline'])) ?></small>
+                    <?php endif; ?>
                 <?php endif; ?>
-                <form class="remediationForm d-inline-flex gap-1 align-items-center mt-1" data-finding-id="<?= intval($f['id']) ?>">
-                    <input type="hidden" name="finding_id" value="<?= intval($f['id']) ?>">
-                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCSRFToken()) ?>">
-                    <input type="date" name="remediation_deadline" value="<?= htmlspecialchars($f['remediation_deadline'] ?? '') ?>" class="form-control form-control-sm" style="width:130px" title="Deadline">
-                    <button type="submit" class="btn btn-sm btn-outline-secondary" title="Set deadline">
-                        <i class="fas fa-calendar"></i>
-                    </button>
-                </form>
             </td>
             <?php endif; ?>
         </tr>
@@ -498,13 +504,11 @@ const orgSelect = document.getElementById('orgSelect');
 const auditSelect = document.getElementById('auditSelect');
 
 function filterAuditsByOrg() {
+    if (!orgSelect) return;
     const orgId = orgSelect.value;
 
     Array.from(auditSelect.options).forEach((opt, index) => {
-        if (index === 0) {
-            opt.hidden = false;
-            return;
-        }
+        if (index === 0) { opt.hidden = false; return; }
         const optionOrgId = opt.dataset.orgId || '';
         opt.hidden = orgId !== '' && optionOrgId !== orgId;
     });
@@ -514,13 +518,15 @@ function filterAuditsByOrg() {
     }
 }
 
-orgSelect.addEventListener('change', filterAuditsByOrg);
-filterAuditsByOrg();
+if (orgSelect) {
+    orgSelect.addEventListener('change', filterAuditsByOrg);
+    filterAuditsByOrg();
+}
 
 document.getElementById('findingAuditSwitcher').addEventListener('submit', function(e) {
     e.preventDefault();
     const selectedAuditId = auditSelect.value;
-    const selectedOrgId = orgSelect.value;
+    const selectedOrgId = orgSelect ? orgSelect.value : '';
 
     if (selectedAuditId) {
         window.location.href = 'findings.php?audit_id=' + encodeURIComponent(selectedAuditId);
@@ -581,25 +587,11 @@ document.getElementById('findingForm').addEventListener('submit', function(e) {
     .catch(() => alert("Error saving finding"));
 });
 
-document.querySelectorAll('.remediationForm').forEach((form) => {
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
-
-        const formData = new FormData(this);
-
-        fetch('api/finding_actions.php?action=update_remediation', {
-            method: 'POST',
-            body: formData
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                location.reload();
-            } else {
-                alert(data.message);
-            }
-        })
-        .catch(() => alert('Error updating remediation'));
+// Enable Close button when date is entered
+document.querySelectorAll('.close-date-input').forEach(input => {
+    input.addEventListener('change', function() {
+        const btn = this.closest('form').querySelector('.close-btn');
+        if (btn) btn.disabled = !this.value;
     });
 });
 

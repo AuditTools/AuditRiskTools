@@ -28,6 +28,22 @@ if (!$organization) {
 <?php include 'includes/header.php'; ?>
 <?php include 'includes/sidebar.php'; ?>
 
+<!-- Flatpickr Date Picker -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<style>
+.flatpickr-day.selected, .flatpickr-day.selected:hover,
+.flatpickr-day.selected.prevMonthDay, .flatpickr-day.selected.nextMonthDay {
+    background: #4e89d4; border-color: #4e89d4;
+}
+.flatpickr-months .flatpickr-month { background: #4e89d4; }
+.flatpickr-current-month .flatpickr-monthDropdown-months { background: #4e89d4; }
+.flatpickr-weekdays { background: #4e89d4; }
+span.flatpickr-weekday { background: #4e89d4; color: #fff; }
+.flatpickr-calendar { box-shadow: 0 4px 20px rgba(0,0,0,.12); border-radius: 10px; }
+#auditDatePicker { cursor: pointer; background: #fff; }
+</style>
+
 <div class="container mt-4">
     <h2 class="mb-4">Create Audit Session</h2>
 
@@ -63,7 +79,11 @@ if (!$organization) {
 
                 <div class="mb-3">
                     <label class="form-label">Audit Date</label>
-                    <input type="date" name="audit_date" class="form-control" required>
+                    <div class="input-group">
+                        <span class="input-group-text text-secondary"><i class="fas fa-calendar-alt"></i></span>
+                        <input type="text" id="auditDatePicker" name="audit_date"
+                               class="form-control" placeholder="Select a date…" autocomplete="off" readonly required>
+                    </div>
                 </div>
 
                 <div class="mb-3">
@@ -154,10 +174,16 @@ if (!$organization) {
                 <input type="hidden" id="assignAuditId">
                 
                 <div class="mb-3">
-                    <label class="form-label">Select Auditee</label>
+                    <label class="form-label d-flex justify-content-between align-items-center">
+                        <span>Select Auditee</span>
+                        <button type="button" class="btn btn-sm btn-outline-success py-0" id="openCreateAuditeeBtn">
+                            <i class="fas fa-user-plus me-1"></i>New Auditee
+                        </button>
+                    </label>
                     <select id="auditeeSelect" class="form-select">
-                        <option value="">Loading...</option>
+                        <option value="">Select Auditee...</option>
                     </select>
+                    <div class="form-text text-muted">Don't see anyone? Click <strong>New Auditee</strong> to create an account.</div>
                 </div>
 
                 <h6>Currently Assigned:</h6>
@@ -173,8 +199,54 @@ if (!$organization) {
     </div>
 </div>
 
+<!-- Create Auditee Modal -->
+<div class="modal fade" id="createAuditeeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-user-plus me-2"></i>Create Auditee Account</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="createAuditeeAlert"></div>
+                <p class="text-muted small mb-3">Create a new user account with the <strong>Auditee</strong> role. Share the credentials with them so they can log in.</p>
+                <div class="mb-3">
+                    <label class="form-label">Full Name</label>
+                    <input type="text" id="newAuditeeName" class="form-control" placeholder="e.g. John Doe">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Email Address</label>
+                    <input type="email" id="newAuditeeEmail" class="form-control" placeholder="e.g. john@company.com">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Temporary Password</label>
+                    <input type="text" id="newAuditeePassword" class="form-control mb-2" placeholder="Min. 6 characters">
+                    <button class="btn btn-warning w-100" type="button" id="genPasswordBtn">
+                        <i class="fas fa-dice me-2"></i>Generate Random Password
+                    </button>
+                    <div class="form-text mt-1">Give this password to the auditee. They can change it later.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="backToAssignBtn">Back</button>
+                <button type="button" class="btn btn-success" id="confirmCreateAuditeeBtn">
+                    <i class="fas fa-check me-1"></i>Create Account
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+
+    // Flatpickr date picker
+    flatpickr('#auditDatePicker', {
+        dateFormat: 'Y-m-d',
+        allowInput: false,
+        disableMobile: true,
+        minDate: 'today',
+    });
 
     document.getElementById('auditForm').addEventListener('submit', function(e) {
         e.preventDefault();
@@ -288,6 +360,85 @@ document.addEventListener('DOMContentLoaded', function() {
                 alertBox.innerHTML = '<div class="alert alert-danger">' + data.message + '</div>';
             }
         });
+    });
+
+    // ---- Create Auditee Modal ----
+    var createAuditeeModal = null;
+    function getCreateAuditeeModal() {
+        if (!createAuditeeModal) {
+            createAuditeeModal = new bootstrap.Modal(document.getElementById('createAuditeeModal'));
+        }
+        return createAuditeeModal;
+    }
+
+    document.getElementById('openCreateAuditeeBtn').addEventListener('click', function() {
+        getAssignModal().hide();
+        document.getElementById('createAuditeeAlert').innerHTML = '';
+        document.getElementById('newAuditeeName').value = '';
+        document.getElementById('newAuditeeEmail').value = '';
+        document.getElementById('newAuditeePassword').value = '';
+        getCreateAuditeeModal().show();
+    });
+
+    document.getElementById('backToAssignBtn').addEventListener('click', function() {
+        getCreateAuditeeModal().hide();
+        getAssignModal().show();
+    });
+
+    document.getElementById('genPasswordBtn').addEventListener('click', function() {
+        const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789@#!';
+        let pwd = '';
+        for (let i = 0; i < 10; i++) pwd += chars[Math.floor(Math.random() * chars.length)];
+        document.getElementById('newAuditeePassword').value = pwd;
+    });
+
+    document.getElementById('confirmCreateAuditeeBtn').addEventListener('click', function() {
+        const name = document.getElementById('newAuditeeName').value.trim();
+        const email = document.getElementById('newAuditeeEmail').value.trim();
+        const password = document.getElementById('newAuditeePassword').value.trim();
+        const alertBox = document.getElementById('createAuditeeAlert');
+
+        if (!name || !email || !password) {
+            alertBox.innerHTML = '<div class="alert alert-warning">Please fill in all fields.</div>';
+            return;
+        }
+
+        const fd = new FormData();
+        fd.append('name', name);
+        fd.append('email', email);
+        fd.append('password', password);
+
+        fetch('api/audit_actions.php?action=create_auditee', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    alertBox.innerHTML = `<div class="alert alert-success"><strong>Account created!</strong><br>${data.message}<br><small class="text-muted">Email: <strong>${email}</strong> &nbsp;|&nbsp; Password: <strong>${password}</strong></small></div>`;
+                    document.getElementById('newAuditeeName').value = '';
+                    document.getElementById('newAuditeeEmail').value = '';
+                    document.getElementById('newAuditeePassword').value = '';
+                    // Refresh the auditee dropdown
+                    const auditId = document.getElementById('assignAuditId').value;
+                    fetch('api/audit_actions.php?action=available_auditees')
+                        .then(r => r.json())
+                        .then(res => {
+                            if (res.success) {
+                                const sel = document.getElementById('auditeeSelect');
+                                sel.innerHTML = '<option value="">Select Auditee...</option>';
+                                res.data.forEach(u => {
+                                    sel.innerHTML += `<option value="${u.id}">${u.name} (${u.email})</option>`;
+                                });
+                                // Pre-select the newly created user
+                                const opt = [...sel.options].find(o => o.text.includes(email));
+                                if (opt) opt.selected = true;
+                            }
+                        });
+                } else {
+                    alertBox.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+                }
+            })
+            .catch(() => {
+                alertBox.innerHTML = '<div class="alert alert-danger">Network error. Please try again.</div>';
+            });
     });
 
     window.removeAuditee = function(auditId, auditeeId) {

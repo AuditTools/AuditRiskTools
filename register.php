@@ -34,6 +34,7 @@ $error = '';
         .register-card {
             max-width: 500px;
             width: 100%;
+            margin: 0 auto;
             box-shadow: 0 10px 40px rgba(0,0,0,0.2);
         }
         .card-header {

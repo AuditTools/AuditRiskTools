@@ -41,6 +41,16 @@ define('APP_ENV', $_ENV['APP_ENV'] ?? 'production');
 define('APP_DEBUG', filter_var($_ENV['APP_DEBUG'] ?? false, FILTER_VALIDATE_BOOLEAN));
 define('APP_URL', $_ENV['APP_URL'] ?? 'http://localhost');
 
+// Mail Configuration
+define('MAIL_DRIVER', $_ENV['MAIL_DRIVER'] ?? 'smtp'); // smtp, mail
+define('MAIL_FROM_ADDRESS', $_ENV['MAIL_FROM_ADDRESS'] ?? 'no-reply@localhost');
+define('MAIL_FROM_NAME', $_ENV['MAIL_FROM_NAME'] ?? 'SRM-Audit');
+define('SMTP_HOST', $_ENV['SMTP_HOST'] ?? '');
+define('SMTP_PORT', intval($_ENV['SMTP_PORT'] ?? 587));
+define('SMTP_USER', $_ENV['SMTP_USER'] ?? '');
+define('SMTP_PASS', $_ENV['SMTP_PASS'] ?? '');
+define('SMTP_ENCRYPTION', $_ENV['SMTP_ENCRYPTION'] ?? 'tls'); // tls, ssl, none
+
 // Error reporting based on environment
 // For API requests, never display errors (return JSON instead)
 $isApiRequest = isset($_SERVER['REQUEST_URI']) && strpos($_SERVER['REQUEST_URI'], '/api/') !== false;

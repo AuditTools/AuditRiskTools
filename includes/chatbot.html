@@ -248,7 +248,7 @@
             const formData = new FormData();
             formData.append('question', question);
             
-            const response = await fetch('/AuditRiskTools/api/ai_actions.php?action=chatbot', {
+            const response = await fetch('api/ai_actions.php?action=chatbot', {
                 method: 'POST',
                 body: formData,
                 credentials: 'include' // Include session cookies for authentication

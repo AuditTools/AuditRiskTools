@@ -34,7 +34,7 @@ $userId = $_SESSION['user_id'];
 $action = $_GET['action'] ?? '';
 
 // Block auditee from write operations
-$writeActions = ['create', 'update', 'delete', 'assign_auditee', 'remove_auditee'];
+$writeActions = ['create', 'update', 'delete', 'assign_auditee', 'remove_auditee', 'create_auditee'];
 if (in_array($action, $writeActions, true)) {
     requireWriteAccess();
 }
@@ -330,6 +330,40 @@ try {
             $auditees = $stmt->fetchAll();
 
             echo json_encode(['success' => true, 'data' => $auditees]);
+            break;
+
+        case 'create_auditee':
+            // Create a new auditee user account
+            $name     = trim($_POST['name'] ?? '');
+            $email    = strtolower(trim($_POST['email'] ?? ''));
+            $password = $_POST['password'] ?? '';
+
+            if (!$name || !$email || !$password) {
+                throw new Exception('Name, email, and password are required');
+            }
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                throw new Exception('Invalid email address');
+            }
+            if (strlen($password) < 6) {
+                throw new Exception('Password must be at least 6 characters');
+            }
+
+            // Check duplicate email
+            $stmt = $pdo->prepare('SELECT id FROM users WHERE email = ?');
+            $stmt->execute([$email]);
+            if ($stmt->fetch()) {
+                throw new Exception('An account with this email already exists');
+            }
+
+            $hashed = password_hash($password, PASSWORD_DEFAULT);
+            $stmt = $pdo->prepare(
+                "INSERT INTO users (name, email, password_hash, role, is_active, created_at) VALUES (?, ?, ?, 'auditee', 1, NOW())"
+            );
+            $stmt->execute([$name, $email, $hashed]);
+            $newUserId = $pdo->lastInsertId();
+
+            logAction($pdo, $userId, 'CREATE_AUDITEE', 'users', $newUserId);
+            echo json_encode(['success' => true, 'message' => "Auditee account for \"$name\" created successfully"]);
             break;
 
         case 'notifications':

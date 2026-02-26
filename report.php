@@ -140,10 +140,10 @@ include 'includes/sidebar.php';
     <?php elseif ($reportData): ?>
         <div class="d-flex flex-wrap gap-2 mb-3">
             <a class="btn btn-outline-secondary" href="api/report_actions.php?action=preview&audit_id=<?= intval($audit_id) ?>" target="_blank">Open Full Preview</a>
-            <?php if ($userRole === 'auditor'): ?>
+            <?php if ($userRole === 'auditor' || $userRole === 'admin'): ?>
                 <a class="btn btn-outline-primary" href="api/report_actions.php?action=download_pdf&audit_id=<?= intval($audit_id) ?>">Download PDF</a>
-                <button class="btn btn-outline-dark" id="aiSummaryBtn" type="button">Generate AI Summary</button>
             <?php endif; ?>
+            <button class="btn btn-outline-dark" id="aiSummaryBtn" type="button">Generate AI Summary</button>
         </div>
 
         <div class="report-card" id="aiSummaryCard">

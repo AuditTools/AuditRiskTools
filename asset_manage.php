@@ -91,9 +91,10 @@ if ($audit_id > 0 && empty($pageError)) {
         <div class="card-body">
             <h5 class="mb-3">Choose Organization & Audit Session</h5>
             <form id="assetAuditSwitcher" class="row g-2">
+                <?php if ($userRole !== 'auditee'): ?>
                 <div class="col-md-5">
                     <select id="orgSelect" class="form-select">
-                        <option value="">All Organization</option>
+                        <option value="">All Organizations</option>
                         <?php foreach ($organizations as $org): ?>
                             <option value="<?= intval($org['id']) ?>" <?= $selectedOrgId === intval($org['id']) ? 'selected' : '' ?>>
                                 <?= htmlspecialchars($org['organization_name']) ?>
@@ -102,6 +103,9 @@ if ($audit_id > 0 && empty($pageError)) {
                     </select>
                 </div>
                 <div class="col-md-5">
+                <?php else: ?>
+                <div class="col-md-10">
+                <?php endif; ?>
                     <select id="auditSelect" class="form-select">
                         <option value="">Choose Audit Session</option>
                         <?php foreach ($allAudits as $auditItem): ?>
@@ -314,13 +318,11 @@ const orgSelect = document.getElementById('orgSelect');
 const auditSelect = document.getElementById('auditSelect');
 
 function filterAuditsByOrg() {
+    if (!orgSelect) return;
     const orgId = orgSelect.value;
 
     Array.from(auditSelect.options).forEach((opt, index) => {
-        if (index === 0) {
-            opt.hidden = false;
-            return;
-        }
+        if (index === 0) { opt.hidden = false; return; }
         const optionOrgId = opt.dataset.orgId || '';
         opt.hidden = orgId !== '' && optionOrgId !== orgId;
     });
@@ -330,13 +332,15 @@ function filterAuditsByOrg() {
     }
 }
 
-orgSelect.addEventListener('change', filterAuditsByOrg);
-filterAuditsByOrg();
+if (orgSelect) {
+    orgSelect.addEventListener('change', filterAuditsByOrg);
+    filterAuditsByOrg();
+}
 
 document.getElementById('assetAuditSwitcher').addEventListener('submit', function(e) {
     e.preventDefault();
     const selectedAuditId = auditSelect.value;
-    const selectedOrgId = orgSelect.value;
+    const selectedOrgId = orgSelect ? orgSelect.value : '';
 
     if (selectedAuditId) {
         window.location.href = 'asset_manage.php?audit_id=' + encodeURIComponent(selectedAuditId);
@@ -352,6 +356,13 @@ document.getElementById('assetAuditSwitcher').addEventListener('submit', functio
 document.getElementById('assetForm').addEventListener('submit', function(e) {
     e.preventDefault();
 
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '⏳ Saving...';
+    }
+
     const formData = new FormData(this);
 
     <?php if ($userRole === 'auditee'): ?>
@@ -366,15 +377,32 @@ document.getElementById('assetForm').addEventListener('submit', function(e) {
         body: formData
     })
     <?php endif; ?>
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            location.reload();
-        } else {
-            alert(data.message);
+    .then(async (res) => {
+        const raw = await res.text();
+        let data;
+
+        try {
+            data = JSON.parse(raw);
+        } catch (err) {
+            throw new Error(raw || `HTTP ${res.status}`);
         }
+
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || `HTTP ${res.status}`);
+        }
+
+        return data;
     })
-    .catch(() => alert("Error adding asset"));
+    .then(data => {
+        location.reload();
+    })
+    .catch((error) => alert("Error adding asset: " + error.message))
+    .finally(() => {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnHtml;
+        }
+    });
 });
 
 <?php if ($userRole === 'auditor'): ?>

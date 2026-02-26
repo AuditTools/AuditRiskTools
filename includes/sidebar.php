@@ -199,17 +199,23 @@ $navClass = function ($pages) use ($currentPage) {
             <?php $role = $_SESSION['user_role'] ?? 'auditor'; ?>
 
             <?php if ($role === 'admin'): ?>
-                <!-- Admin: Management only -->
+                <!-- Admin: Full oversight + management -->
                 <li class="nav-item"><a href="user_management.php" data-short="UM" class="<?= $navClass(['user_management.php']) ?>"><span class="srm-nav-text">User Management</span></a></li>
-                <li class="nav-item"><a href="organizations.php" data-short="OR" class="<?= $navClass(['organizations.php', 'audit_sessions.php']) ?>"><span class="srm-nav-text">Organizations</span></a></li>
+                <li class="nav-item"><a href="organizations.php" data-short="OR" class="<?= $navClass(['organizations.php']) ?>"><span class="srm-nav-text">Organizations</span></a></li>
+                <li class="nav-item"><a href="audit_sessions.php" data-short="AS" class="<?= $navClass(['audit_sessions.php']) ?>"><span class="srm-nav-text">Audit Sessions</span></a></li>
                 <?php if (!empty($_SESSION['active_audit_id'])): ?>
-                    <li class="nav-item"><a href="report.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="RP" class="<?= $navClass(['report.php']) ?>"><span class="srm-nav-text">Report (View)</span></a></li>
+                    <li class="nav-item"><a href="asset_manage.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="AM" class="<?= $navClass(['asset_manage.php']) ?>"><span class="srm-nav-text">Asset Management</span></a></li>
+                    <li class="nav-item"><a href="vulnerability_assessment.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="VA" class="<?= $navClass(['vulnerability_assessment.php']) ?>"><span class="srm-nav-text">Vuln Assessment</span></a></li>
+                    <li class="nav-item"><a href="control_checklist.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="CC" class="<?= $navClass(['control_checklist.php']) ?>"><span class="srm-nav-text">Control Checklist</span></a></li>
+                    <li class="nav-item"><a href="findings.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="FD" class="<?= $navClass(['findings.php']) ?>"><span class="srm-nav-text">Findings</span></a></li>
+                    <li class="nav-item"><a href="report.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="RP" class="<?= $navClass(['report.php']) ?>"><span class="srm-nav-text">Report</span></a></li>
                 <?php endif; ?>
             <?php endif; ?>
 
             <?php if ($role === 'auditor'): ?>
                 <!-- Auditor: Full audit workflow -->
-                <li class="nav-item"><a href="organizations.php" data-short="OR" class="<?= $navClass(['organizations.php', 'audit_sessions.php']) ?>"><span class="srm-nav-text">Organizations</span></a></li>
+                <li class="nav-item"><a href="organizations.php" data-short="OR" class="<?= $navClass(['organizations.php']) ?>"><span class="srm-nav-text">Organizations</span></a></li>
+                <li class="nav-item"><a href="audit_sessions.php" data-short="AS" class="<?= $navClass(['audit_sessions.php']) ?>"><span class="srm-nav-text">Audit Sessions</span></a></li>
                 <?php if (!empty($_SESSION['active_audit_id'])): ?>
                     <li class="nav-item"><a href="asset_manage.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="AM" class="<?= $navClass(['asset_manage.php']) ?>"><span class="srm-nav-text">Asset Management</span></a></li>
                     <li class="nav-item"><a href="vulnerability_assessment.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="VA" class="<?= $navClass(['vulnerability_assessment.php']) ?>"><span class="srm-nav-text">Vuln Assessment</span></a></li>
@@ -223,12 +229,31 @@ $navClass = function ($pages) use ($currentPage) {
                 <!-- Auditee: Assigned audits only -->
                 <?php if (!empty($_SESSION['active_audit_id'])): ?>
                     <li class="nav-item"><a href="asset_manage.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="AM" class="<?= $navClass(['asset_manage.php']) ?>"><span class="srm-nav-text">Asset Registration</span></a></li>
-                    <li class="nav-item"><a href="findings.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="FD" class="<?= $navClass(['findings.php']) ?>"><span class="srm-nav-text">Findings & Response</span></a></li>
+                    <li class="nav-item"><a href="vulnerability_assessment.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="VA" class="<?= $navClass(['vulnerability_assessment.php']) ?>"><span class="srm-nav-text">Vuln Assessment</span></a></li>
+                    <li class="nav-item"><a href="findings.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="FD" class="<?= $navClass(['findings.php']) ?>"><span class="srm-nav-text">Findings &amp; Response</span></a></li>
                     <li class="nav-item"><a href="report.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="RP" class="<?= $navClass(['report.php']) ?>"><span class="srm-nav-text">Report (View)</span></a></li>
                 <?php endif; ?>
-            <?php endif; ?>
+                <li class="nav-item"><a href="history.php" data-short="HI" class="<?= $navClass(['history.php']) ?>"><span class="srm-nav-text">Activity History</span></a></li>
+            <?php endif; ?> <!-- end auditee -->
 
-            <li class="nav-item mt-2"><small class="text-muted px-3">Role: <?= ucfirst($role) ?></small></li>
+            <li class="nav-item mt-auto pt-3">
+                <hr class="border-secondary mt-1 mb-2">
+                <?php
+                    $roleColors = ['admin' => '#e76f7a', 'auditor' => '#5f95ff', 'auditee' => '#67b389'];
+                    $roleColor  = $roleColors[$role] ?? '#7f8ea8';
+                    $userName   = htmlspecialchars($_SESSION['user_name'] ?? 'User');
+                    $userInitial = strtoupper(mb_substr($_SESSION['user_name'] ?? 'U', 0, 1));
+                ?>
+                <a href="profile.php" class="<?= $navClass(['profile.php']) ?> d-flex align-items-center gap-2 px-2 py-2" style="border-radius:10px; text-decoration:none;">
+                    <div style="width:34px;height:34px;border-radius:50%;background:<?= $roleColor ?>;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:#fff;flex-shrink:0;">
+                        <?= $userInitial ?>
+                    </div>
+                    <div class="srm-nav-text lh-sm" style="overflow:hidden;">
+                        <div class="fw-semibold text-white text-truncate" style="font-size:0.85rem;max-width:140px;"><?= $userName ?></div>
+                        <div style="font-size:0.72rem;color:<?= $roleColor ?>;font-weight:600;letter-spacing:0.4px;"><?= strtoupper($role) ?></div>
+                    </div>
+                </a>
+            </li>
             <li class="nav-item"><a href="logout.php" data-short="LO" class="<?= $navClass(['logout.php']) ?>"><span class="srm-nav-text">Logout</span></a></li>
         </ul>
     </div>

@@ -82,11 +82,11 @@ include 'includes/sidebar.php';
         color: #fff;
         border-radius: 6px 6px 0 0;
     }
-    .fn-identify { background: #0d6efd; }
-    .fn-protect { background: #198754; }
-    .fn-detect { background: #fd7e14; }
-    .fn-respond { background: #dc3545; }
-    .fn-recover { background: #6f42c1; }
+    .fn-identify { background: #7eaee0; }
+    .fn-protect { background: #6abea0; }
+    .fn-detect { background: #f0ab6e; }
+    .fn-respond { background: #e48691; }
+    .fn-recover { background: #a888d4; }
 
     .control-row {
         padding: 12px 18px;
@@ -162,8 +162,13 @@ include 'includes/sidebar.php';
         bottom: 20px;
         right: 30px;
         z-index: 1050;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+        opacity: 0.82;
+        font-size: 0.875rem;
+        padding: 0.4rem 1rem;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+        transition: opacity 0.2s;
     }
+    .save-float:hover { opacity: 1; }
 </style>
 
 <!-- Page Header -->
@@ -385,7 +390,11 @@ include 'includes/sidebar.php';
                     elseif ($currentStatus === 'Non-Compliant') $statusClass = 'status-Non-Compliant';
                     elseif ($currentStatus === 'Not Applicable') $statusClass = 'status-Not-Applicable';
                     ?>
-                    <div class="control-row" data-control="<?= $cid ?>" data-status="<?= $currentStatus ?>">
+                    <div class="control-row"
+                        data-control="<?= $cid ?>"
+                        data-status="<?= htmlspecialchars($currentStatus, ENT_QUOTES) ?>"
+                        data-initial-status="<?= htmlspecialchars($currentStatus, ENT_QUOTES) ?>"
+                        data-initial-notes="<?= htmlspecialchars($currentNotes, ENT_QUOTES) ?>">
                         <div class="row align-items-start">
                             <div class="col-md-6">
                                 <span class="control-id-badge"><?= $cid ?></span>
@@ -420,8 +429,8 @@ include 'includes/sidebar.php';
     <?php endforeach; ?>
 
     <!-- Floating Save Button -->
-    <button class="btn btn-lg btn-success save-float" id="btnSaveAll" onclick="saveAll()">
-        💾 Save All Changes
+    <button class="btn btn-sm btn-success save-float" id="btnSaveAll" onclick="saveAll()">
+        💾 Save All
     </button>
 
     <!-- Status toast -->
@@ -442,10 +451,43 @@ include 'includes/sidebar.php';
         let guidanceVisible = false;
         let hasUnsavedChanges = false;
 
+        function normalizeNotes(value) {
+            return (value || '').trim();
+        }
+
+        function getChangedRows() {
+            const changedRows = [];
+
+            document.querySelectorAll('.control-row').forEach(row => {
+                const currentStatus = row.querySelector('.status-select').value;
+                const currentNotes = normalizeNotes(row.querySelector('.notes-input').value);
+                const initialStatus = row.dataset.initialStatus || 'Not Assessed';
+                const initialNotes = normalizeNotes(row.dataset.initialNotes || '');
+
+                if (currentStatus !== initialStatus || currentNotes !== initialNotes) {
+                    changedRows.push(row);
+                }
+            });
+
+            return changedRows;
+        }
+
+        function getChangedItems() {
+            return getChangedRows().map(row => ({
+                control_id: row.dataset.control,
+                status: row.querySelector('.status-select').value,
+                notes: normalizeNotes(row.querySelector('.notes-input').value)
+            }));
+        }
+
+        function refreshUnsavedChanges() {
+            hasUnsavedChanges = getChangedRows().length > 0;
+        }
+
         // Track changes
         document.querySelectorAll('.status-select, .notes-input').forEach(el => {
-            el.addEventListener('change', () => { hasUnsavedChanges = true; });
-            el.addEventListener('input', () => { hasUnsavedChanges = true; });
+            el.addEventListener('change', refreshUnsavedChanges);
+            el.addEventListener('input', refreshUnsavedChanges);
         });
 
         // Warn before leaving with unsaved changes
@@ -512,13 +554,15 @@ include 'includes/sidebar.php';
             btn.disabled = true;
             btn.innerHTML = '⏳ Saving...';
 
-            const items = [];
-            document.querySelectorAll('.control-row').forEach(row => {
-                const cid = row.dataset.control;
-                const status = row.querySelector('.status-select').value;
-                const notes = row.querySelector('.notes-input').value.trim();
-                items.push({ control_id: cid, status: status, notes: notes });
-            });
+            const changedRows = getChangedRows();
+            const items = getChangedItems();
+
+            if (items.length === 0) {
+                showToast('ℹ️ No changes to save', 'info');
+                btn.disabled = false;
+                btn.innerHTML = '💾 Save All Changes';
+                return;
+            }
 
             try {
                 const res = await fetch('api/checklist_actions.php?action=save_bulk', {
@@ -533,7 +577,13 @@ include 'includes/sidebar.php';
                 const data = await res.json();
                 if (data.success) {
                     showToast('✅ ' + data.message, 'success');
-                    hasUnsavedChanges = false;
+
+                    changedRows.forEach(row => {
+                        row.dataset.initialStatus = row.querySelector('.status-select').value;
+                        row.dataset.initialNotes = normalizeNotes(row.querySelector('.notes-input').value);
+                    });
+
+                    refreshUnsavedChanges();
                 } else {
                     showToast('❌ ' + data.message, 'danger');
                 }

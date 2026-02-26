@@ -25,7 +25,8 @@ if ($auditId <= 0) {
 }
 
 updateAuditMetrics($pdo, $auditId);
-$data = getReportData($pdo, $auditId, $userId);
+$userRole = $_SESSION['user_role'] ?? 'auditor';
+$data = getReportData($pdo, $auditId, $userId, $userRole);
 
 if (!$data) {
 	http_response_code(404);
@@ -47,6 +48,13 @@ $html .= renderReportHtml($data);
 $html .= "</body></html>";
 
 if ($action === 'download_pdf') {
+	if ($userRole === 'auditee') {
+		http_response_code(403);
+		header('Content-Type: application/json');
+		echo json_encode(['error' => 'PDF download is restricted to auditors and administrators.']);
+		exit();
+	}
+
 	$autoload = __DIR__ . '/../vendor/autoload.php';
 
 	if (!file_exists($autoload)) {

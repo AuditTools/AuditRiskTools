@@ -40,6 +40,16 @@ try {
             $description = trim($_POST['description'] ?? '');
             $owner = trim($_POST['owner'] ?? '');
             $department = trim($_POST['department'] ?? '');
+
+            if ($auditId <= 0) {
+                throw new Exception('Invalid audit session');
+            }
+            if ($assetName === '') {
+                throw new Exception('Asset name is required');
+            }
+            if ($assetType === '') {
+                throw new Exception('Asset type is required');
+            }
             
             // CIA ratings
             $confidentiality = intval($_POST['confidentiality']);
@@ -64,6 +74,13 @@ try {
                 throw new Exception('Audit session not found or access denied');
             }
             
+            // Check for duplicate asset name within same audit
+            $stmtDup = $pdo->prepare("SELECT id FROM assets WHERE audit_id = ? AND LOWER(asset_name) = LOWER(?)");
+            $stmtDup->execute([$auditId, $assetName]);
+            if ($stmtDup->fetch()) {
+                throw new Exception("An asset named \"$assetName\" already exists in this audit session.");
+            }
+
             // Calculate criticality
             $criticalityScore = ($confidentiality + $integrity + $availability) / 3;
             $criticalityLevel = calculateCriticalityLevel($criticalityScore);
@@ -133,6 +150,13 @@ try {
                 throw new Exception('Asset not found or access denied');
             }
             
+            // Check for duplicate asset name (excluding self)
+            $stmtDup = $pdo->prepare("SELECT id FROM assets WHERE audit_id = ? AND LOWER(asset_name) = LOWER(?) AND id != ?");
+            $stmtDup->execute([$asset['audit_id'], $assetName, $assetId]);
+            if ($stmtDup->fetch()) {
+                throw new Exception("An asset named \"$assetName\" already exists in this audit session.");
+            }
+
             // Calculate criticality
             $criticalityScore = ($confidentiality + $integrity + $availability) / 3;
             $criticalityLevel = calculateCriticalityLevel($criticalityScore);
@@ -266,8 +290,21 @@ try {
             $owner = trim($_POST['owner'] ?? '');
             $department = trim($_POST['department'] ?? '');
 
+            if ($auditId <= 0) {
+                throw new Exception('Invalid audit session');
+            }
             if (!$assetName) {
                 throw new Exception('Asset name is required');
+            }
+            if (!$assetType) {
+                throw new Exception('Asset type is required');
+            }
+
+            // Check for duplicate asset name within same audit
+            $stmtDup = $pdo->prepare("SELECT id FROM assets WHERE audit_id = ? AND LOWER(asset_name) = LOWER(?)");
+            $stmtDup->execute([$auditId, $assetName]);
+            if ($stmtDup->fetch()) {
+                throw new Exception("An asset named \"$assetName\" already exists in this audit session.");
             }
 
             // Default CIA to 1 (auditor will set real values)
@@ -358,14 +395,6 @@ try {
     
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
-}
-
-function updateAuditCriticality($pdo, $auditId) {
-    updateAuditMetrics($pdo, $auditId);
-}
-
-function calculateAssetCriticality($c, $i, $a) {
-    return round(($c + $i + $a) / 3, 2);
 }
 
 function logAction($pdo, $userId, $action, $table, $recordId) {

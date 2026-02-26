@@ -246,8 +246,9 @@ try {
                 throw new Exception('Finding not found or access denied');
             }
 
-            $stmt = $pdo->prepare("UPDATE findings SET remediation_status = 'Resolved', updated_at = NOW() WHERE id = ?");
-            $stmt->execute([$findingId]);
+            $deadline = !empty($_POST['remediation_deadline']) ? $_POST['remediation_deadline'] : null;
+            $stmt = $pdo->prepare("UPDATE findings SET remediation_status = 'Resolved', remediation_deadline = COALESCE(?, remediation_deadline), updated_at = NOW() WHERE id = ?");
+            $stmt->execute([$deadline, $findingId]);
 
             updateAuditMetrics($pdo, (int)$finding['audit_id']);
             logAction($pdo, $userId, 'CLOSE_FINDING', 'findings', $findingId);

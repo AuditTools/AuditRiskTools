@@ -107,21 +107,48 @@ try {
 
             $pdo->beginTransaction();
             $savedCount = 0;
+
+            $stmtExisting = $pdo->prepare("SELECT status, notes FROM control_checklist WHERE audit_id = ? AND control_id = ? LIMIT 1");
             foreach ($items as $item) {
                 $controlId = trim($item['control_id'] ?? '');
                 $status    = $item['status'] ?? 'Not Assessed';
                 $notes     = trim($item['notes'] ?? '');
 
+                if ($controlId === '') {
+                    continue;
+                }
+
                 validateStatus($status);
+
+                $newNotes = $notes !== '' ? $notes : null;
+
+                $stmtExisting->execute([$auditId, $controlId]);
+                $existing = $stmtExisting->fetch(PDO::FETCH_ASSOC);
+
+                if ($existing) {
+                    $existingStatus = $existing['status'] ?? 'Not Assessed';
+                    $existingNotes = $existing['notes'] ?? null;
+
+                    if ($existingStatus === $status && (string)($existingNotes ?? '') === (string)($newNotes ?? '')) {
+                        continue;
+                    }
+                }
+
                 upsertChecklistItem($pdo, $auditId, $controlId, $status, $notes);
                 $savedCount++;
             }
             $pdo->commit();
 
-            // Recalculate compliance
-            updateAuditMetrics($pdo, $auditId);
+            // Recalculate compliance only when there are actual changes
+            if ($savedCount > 0) {
+                updateAuditMetrics($pdo, $auditId);
+            }
 
-            echo json_encode(['success' => true, 'message' => "$savedCount controls saved", 'saved' => $savedCount]);
+            $message = $savedCount > 0
+                ? "$savedCount controls updated"
+                : "No changes detected";
+
+            echo json_encode(['success' => true, 'message' => $message, 'saved' => $savedCount]);
             break;
 
         /**

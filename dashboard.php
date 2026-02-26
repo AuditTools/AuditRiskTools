@@ -50,6 +50,12 @@ if ($userRole === 'auditee') {
     $allAudits = $stmtAuditList->fetchAll(PDO::FETCH_ASSOC);
 }
 
+// Auditee: auto-activate the most recent assigned audit if none selected yet
+if ($userRole === 'auditee' && $audit_id === 0 && !empty($allAudits)) {
+    $audit_id = intval($allAudits[0]['id']);
+    $_SESSION['active_audit_id'] = $audit_id;
+}
+
 $audit = null;
 $topRisks = [];
 $assetCount = 0;
@@ -105,41 +111,86 @@ include 'includes/sidebar.php';
         <?php endif; ?>
     </h2>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <h5 class="mb-3">Choose Organization & Audit Session</h5>
-            <form id="auditSwitcher" class="row g-2">
-                <div class="col-md-5">
-                    <select id="orgSelect" class="form-select">
-                        <option value="">All Organization</option>
-                        <?php foreach ($organizations as $org): ?>
-                            <option value="<?php echo intval($org['id']); ?>" <?php echo $selectedOrgId === intval($org['id']) ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($org['organization_name']); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-5">
-                    <select id="auditSelect" class="form-select">
-                        <option value="">Choose Audit Session</option>
-                        <?php foreach ($allAudits as $auditItem): ?>
-                            <option value="<?php echo intval($auditItem['id']); ?>"
-                                    data-org-id="<?php echo intval($auditItem['organization_id']); ?>"
-                                    <?php echo $audit_id === intval($auditItem['id']) ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($auditItem['organization_name'] . ' - ' . $auditItem['session_name'] . ' (' . $auditItem['audit_date'] . ')'); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-2 d-grid">
-                    <button class="btn btn-primary" type="submit">Open</button>
-                </div>
-            </form>
+    <?php if (isset($_GET['error']) && $_GET['error'] === 'access_denied'): ?>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="fas fa-lock me-2"></i>
+            <strong>Access Denied.</strong> You don't have permission to view that page.
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
-    </div>
+    <?php endif; ?>
+
+    <?php if ($userRole === 'auditee'): ?>
+        <!-- Auditee: show assigned audits as clickable cards -->
+        <?php if (empty($allAudits)): ?>
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                <strong>No audits assigned yet.</strong> Please contact your auditor.
+            </div>
+        <?php else: ?>
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h5 class="mb-3"><i class="fas fa-list-check me-2 text-primary"></i>Your Assigned Audits</h5>
+                    <div class="row g-2">
+                        <?php foreach ($allAudits as $auditItem): ?>
+                            <?php $isActive = ($audit_id === intval($auditItem['id'])); ?>
+                            <div class="col-md-4">
+                                <a href="dashboard.php?audit_id=<?= intval($auditItem['id']) ?>" class="text-decoration-none">
+                                    <div class="card h-100 <?= $isActive ? 'border-primary bg-primary bg-opacity-10' : 'border' ?>">
+                                        <div class="card-body py-2 px-3">
+                                            <div class="fw-semibold <?= $isActive ? 'text-primary' : '' ?>">
+                                                <?= $isActive ? '<i class="fas fa-circle-check me-1"></i>' : '' ?>
+                                                <?= htmlspecialchars($auditItem['session_name']) ?>
+                                            </div>
+                                            <small class="text-muted"><?= htmlspecialchars($auditItem['organization_name']) ?> &middot; <?= htmlspecialchars($auditItem['audit_date']) ?></small>
+                                        </div>
+                                    </div>
+                                </a>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+    <?php else: ?>
+        <!-- Auditor / Admin: full org + audit switcher -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="mb-3">Choose Organization & Audit Session</h5>
+                <form id="auditSwitcher" class="row g-2">
+                    <div class="col-md-5">
+                        <select id="orgSelect" class="form-select">
+                            <option value="">All Organization</option>
+                            <?php foreach ($organizations as $org): ?>
+                                <option value="<?php echo intval($org['id']); ?>" <?php echo $selectedOrgId === intval($org['id']) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($org['organization_name']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-5">
+                        <select id="auditSelect" class="form-select">
+                            <option value="">Choose Audit Session</option>
+                            <?php foreach ($allAudits as $auditItem): ?>
+                                <option value="<?php echo intval($auditItem['id']); ?>"
+                                        data-org-id="<?php echo intval($auditItem['organization_id']); ?>"
+                                        <?php echo $audit_id === intval($auditItem['id']) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($auditItem['organization_name'] . ' - ' . $auditItem['session_name'] . ' (' . $auditItem['audit_date'] . ')'); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-2 d-grid">
+                        <button class="btn btn-primary" type="submit">Open</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    <?php endif; ?>
 
     <?php if (!$audit_id): ?>
+        <?php if ($userRole !== 'auditee'): ?>
         <div class="alert alert-warning">Choose an audit session first to start managing assets or findings.</div>
+        <?php endif; ?>
     <?php elseif (!$audit): ?>
         <div class="alert alert-danger">Audit not found or access denied.</div>
     <?php else: ?>
@@ -241,11 +292,13 @@ include 'includes/sidebar.php';
             <?php if ($userRole === 'auditor'): ?>
                 <a href="asset_manage.php?audit_id=<?php echo intval($audit_id); ?>" class="btn btn-primary">Manage Assets</a>
                 <a href="findings.php?audit_id=<?php echo intval($audit_id); ?>" class="btn btn-warning">Manage Findings</a>
+                <a href="control_checklist.php?audit_id=<?php echo intval($audit_id); ?>" class="btn btn-outline-secondary">Control Checklist</a>
             <?php elseif ($userRole === 'auditee'): ?>
                 <a href="asset_manage.php?audit_id=<?php echo intval($audit_id); ?>" class="btn btn-primary">Register Assets</a>
-                <a href="findings.php?audit_id=<?php echo intval($audit_id); ?>" class="btn btn-warning">View Findings & Respond</a>
-            <?php else: ?>
+                <a href="findings.php?audit_id=<?php echo intval($audit_id); ?>" class="btn btn-warning">View Findings &amp; Respond</a>
+            <?php elseif ($userRole === 'admin'): ?>
                 <a href="report.php?audit_id=<?php echo intval($audit_id); ?>" class="btn btn-info text-white">View Report</a>
+                <a href="audit_sessions.php?org_id=<?php echo intval($selectedOrgId); ?>" class="btn btn-outline-secondary">Manage Sessions</a>
             <?php endif; ?>
         </div>
     <?php endif; ?>

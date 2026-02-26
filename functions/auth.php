@@ -138,6 +138,15 @@ function verifyCSRFToken($token) {
 }
 
 /**
+ * Validate CSRF token from incoming request.
+ * Supports POST form token and X-CSRF-Token header.
+ */
+function isValidCSRFRequest() {
+    $token = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    return verifyCSRFToken($token);
+}
+
+/**
  * Get CSRF token HTML input
  */
 function csrfTokenInput() {
@@ -305,8 +314,8 @@ function requireAuditor() {
         exit();
     }
     if (!isAuditor() && !isAdmin()) {
-        http_response_code(403);
-        die('Access denied. Auditor role required.');
+        header('Location: dashboard.php?error=access_denied');
+        exit();
     }
 }
 
