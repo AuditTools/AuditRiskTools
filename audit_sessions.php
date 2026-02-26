@@ -174,134 +174,144 @@ if (!$organization) {
 </div>
 
 <script>
-document.getElementById('auditForm').addEventListener('submit', function(e) {
-    e.preventDefault();
+document.addEventListener('DOMContentLoaded', function() {
 
-    const formData = new FormData(this);
+    document.getElementById('auditForm').addEventListener('submit', function(e) {
+        e.preventDefault();
 
-    fetch('api/audit_actions.php?action=create', {
-        method: 'POST',
-        body: formData
-    })
-    .then(res => {
-        const contentType = res.headers.get('content-type');
-        if (!contentType || !contentType.includes('application/json')) {
-            return res.text().then(text => {
-                console.error('Non-JSON response:', text);
-                throw new Error('Server returned non-JSON response. Check browser console.');
-            });
-        }
-        return res.json();
-    })
-    .then(data => {
-        if (data.success) {
-            window.location.reload();
-        } else {
-            alert(data.message || 'Error creating audit session');
-        }
-    })
-    .catch(err => {
-        console.error('Error:', err);
-        alert(err.message || "Error creating audit session");
-    });
-});
+        const formData = new FormData(this);
 
-// Assign Auditee Modal logic
-const assignModal = new bootstrap.Modal(document.getElementById('assignAuditeeModal'));
-
-document.querySelectorAll('.assignAuditeeBtn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        const auditId = this.dataset.auditId;
-        const auditName = this.dataset.auditName;
-        document.getElementById('assignAuditId').value = auditId;
-        document.getElementById('assignAuditName').textContent = auditName;
-        
-        // Load available auditees
-        fetch('api/audit_actions.php?action=available_auditees')
-            .then(r => r.json())
-            .then(data => {
-                const sel = document.getElementById('auditeeSelect');
-                sel.innerHTML = '<option value="">Select Auditee...</option>';
-                if (data.success) {
-                    data.data.forEach(u => {
-                        sel.innerHTML += `<option value="${u.id}">${u.name} (${u.email})</option>`;
-                    });
-                }
-            });
-        
-        // Load currently assigned
-        loadAssigned(auditId);
-        assignModal.show();
-    });
-});
-
-function loadAssigned(auditId) {
-    fetch('api/audit_actions.php?action=list_auditees&audit_id=' + auditId)
-        .then(r => r.json())
-        .then(data => {
-            const div = document.getElementById('currentAuditees');
-            if (data.success && data.data.length > 0) {
-                div.innerHTML = data.data.map(a => 
-                    `<span class="badge bg-info me-1">${a.name} 
-                        <button type="button" class="btn-close btn-close-white ms-1" style="font-size:0.6em" 
-                                onclick="removeAuditee(${auditId}, ${a.id})"></button>
-                    </span>`
-                ).join('');
-            } else {
-                div.innerHTML = '<span class="text-muted">No auditees assigned yet</span>';
+        fetch('api/audit_actions.php?action=create', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => {
+            const contentType = res.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                return res.text().then(text => {
+                    console.error('Non-JSON response:', text);
+                    throw new Error('Server returned non-JSON response. Check browser console.');
+                });
             }
+            return res.json();
+        })
+        .then(data => {
+            if (data.success) {
+                window.location.reload();
+            } else {
+                alert(data.message || 'Error creating audit session');
+            }
+        })
+        .catch(err => {
+            console.error('Error:', err);
+            alert(err.message || "Error creating audit session");
         });
-}
+    });
 
-document.getElementById('confirmAssignBtn').addEventListener('click', function() {
-    const auditId = document.getElementById('assignAuditId').value;
-    const auditeeId = document.getElementById('auditeeSelect').value;
-    const alertBox = document.getElementById('assignAlertBox');
-    
-    if (!auditeeId) {
-        alertBox.innerHTML = '<div class="alert alert-warning">Please select an auditee</div>';
-        return;
+    // Assign Auditee Modal logic — created lazily after Bootstrap JS is loaded
+    var assignModal = null;
+    function getAssignModal() {
+        if (!assignModal) {
+            assignModal = new bootstrap.Modal(document.getElementById('assignAuditeeModal'));
+        }
+        return assignModal;
     }
 
-    const fd = new FormData();
-    fd.append('audit_id', auditId);
-    fd.append('auditee_user_id', auditeeId);
-
-    fetch('api/audit_actions.php?action=assign_auditee', {
-        method: 'POST',
-        body: fd
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            alertBox.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+    document.querySelectorAll('.assignAuditeeBtn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const auditId = this.dataset.auditId;
+            const auditName = this.dataset.auditName;
+            document.getElementById('assignAuditId').value = auditId;
+            document.getElementById('assignAuditName').textContent = auditName;
+            
+            // Load available auditees
+            fetch('api/audit_actions.php?action=available_auditees')
+                .then(r => r.json())
+                .then(data => {
+                    const sel = document.getElementById('auditeeSelect');
+                    sel.innerHTML = '<option value="">Select Auditee...</option>';
+                    if (data.success) {
+                        data.data.forEach(u => {
+                            sel.innerHTML += `<option value="${u.id}">${u.name} (${u.email})</option>`;
+                        });
+                    }
+                });
+            
+            // Load currently assigned
             loadAssigned(auditId);
-        } else {
-            alertBox.innerHTML = '<div class="alert alert-danger">' + data.message + '</div>';
-        }
+            getAssignModal().show();
+        });
     });
-});
 
-function removeAuditee(auditId, auditeeId) {
-    if (!confirm('Remove this auditee from the audit?')) return;
-    
-    const fd = new FormData();
-    fd.append('audit_id', auditId);
-    fd.append('auditee_user_id', auditeeId);
+    window.loadAssigned = function(auditId) {
+        fetch('api/audit_actions.php?action=list_auditees&audit_id=' + auditId)
+            .then(r => r.json())
+            .then(data => {
+                const div = document.getElementById('currentAuditees');
+                if (data.success && data.data.length > 0) {
+                    div.innerHTML = data.data.map(a => 
+                        `<span class="badge bg-info me-1">${a.name} 
+                            <button type="button" class="btn-close btn-close-white ms-1" style="font-size:0.6em" 
+                                    onclick="removeAuditee(${auditId}, ${a.id})"></button>
+                        </span>`
+                    ).join('');
+                } else {
+                    div.innerHTML = '<span class="text-muted">No auditees assigned yet</span>';
+                }
+            });
+    };
 
-    fetch('api/audit_actions.php?action=remove_auditee', {
-        method: 'POST',
-        body: fd
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            loadAssigned(auditId);
-        } else {
-            alert(data.message);
+    document.getElementById('confirmAssignBtn').addEventListener('click', function() {
+        const auditId = document.getElementById('assignAuditId').value;
+        const auditeeId = document.getElementById('auditeeSelect').value;
+        const alertBox = document.getElementById('assignAlertBox');
+        
+        if (!auditeeId) {
+            alertBox.innerHTML = '<div class="alert alert-warning">Please select an auditee</div>';
+            return;
         }
+
+        const fd = new FormData();
+        fd.append('audit_id', auditId);
+        fd.append('auditee_user_id', auditeeId);
+
+        fetch('api/audit_actions.php?action=assign_auditee', {
+            method: 'POST',
+            body: fd
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alertBox.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+                loadAssigned(auditId);
+            } else {
+                alertBox.innerHTML = '<div class="alert alert-danger">' + data.message + '</div>';
+            }
+        });
     });
-}
+
+    window.removeAuditee = function(auditId, auditeeId) {
+        if (!confirm('Remove this auditee from the audit?')) return;
+        
+        const fd = new FormData();
+        fd.append('audit_id', auditId);
+        fd.append('auditee_user_id', auditeeId);
+
+        fetch('api/audit_actions.php?action=remove_auditee', {
+            method: 'POST',
+            body: fd
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                loadAssigned(auditId);
+            } else {
+                alert(data.message);
+            }
+        });
+    };
+
+}); // end DOMContentLoaded
 </script>
 
 <?php include 'includes/footer.php'; ?>

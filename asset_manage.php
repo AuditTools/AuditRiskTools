@@ -89,11 +89,11 @@ if ($audit_id > 0 && empty($pageError)) {
 
     <div class="card shadow-sm mb-4">
         <div class="card-body">
-            <h5 class="mb-3">Pilih Organization & Audit Session</h5>
+            <h5 class="mb-3">Choose Organization & Audit Session</h5>
             <form id="assetAuditSwitcher" class="row g-2">
                 <div class="col-md-5">
                     <select id="orgSelect" class="form-select">
-                        <option value="">Semua Organization</option>
+                        <option value="">All Organization</option>
                         <?php foreach ($organizations as $org): ?>
                             <option value="<?= intval($org['id']) ?>" <?= $selectedOrgId === intval($org['id']) ? 'selected' : '' ?>>
                                 <?= htmlspecialchars($org['organization_name']) ?>
@@ -103,7 +103,7 @@ if ($audit_id > 0 && empty($pageError)) {
                 </div>
                 <div class="col-md-5">
                     <select id="auditSelect" class="form-select">
-                        <option value="">Pilih Audit Session</option>
+                        <option value="">Choose Audit Session</option>
                         <?php foreach ($allAudits as $auditItem): ?>
                             <option value="<?= intval($auditItem['id']) ?>"
                                     data-org-id="<?= intval($auditItem['organization_id']) ?>"
@@ -125,7 +125,7 @@ if ($audit_id > 0 && empty($pageError)) {
     <?php endif; ?>
 
     <?php if (!$audit_id): ?>
-        <div class="alert alert-warning">Pilih audit session dulu untuk mengelola assets.</div>
+        <div class="alert alert-warning">Choose an audit session first to manage assets.</div>
     <?php else: ?>
 
     <!-- Add Asset Form -->

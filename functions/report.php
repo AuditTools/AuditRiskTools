@@ -10,7 +10,7 @@ function getReportData($pdo, $auditId, $userId, $role = 'auditor') {
             FROM audit_sessions a
             JOIN organizations o ON a.organization_id = o.id
             JOIN audit_auditees aa ON aa.audit_id = a.id
-            WHERE a.id = ? AND aa.user_id = ?");
+            WHERE a.id = ? AND aa.auditee_user_id = ?");
         $stmt->execute([$auditId, $userId]);
     } elseif ($role === 'admin') {
         $stmt = $pdo->prepare("SELECT a.*, o.organization_name, o.industry

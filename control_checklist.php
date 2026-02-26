@@ -11,6 +11,7 @@ require_once 'functions/auth.php';
 require_once 'functions/nist_controls.php';
 
 requireLogin();
+requireAuditor(); // Only admin/auditor can access control checklist
 
 $userId = $_SESSION['user_id'];
 $audit_id = intval($_GET['audit_id'] ?? ($_SESSION['active_audit_id'] ?? 0));
