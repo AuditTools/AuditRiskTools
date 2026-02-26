@@ -224,7 +224,6 @@ $navClass = function ($pages) use ($currentPage) {
                 <?php if (!empty($_SESSION['active_audit_id'])): ?>
                     <li class="nav-item"><a href="asset_manage.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="AM" class="<?= $navClass(['asset_manage.php']) ?>"><span class="srm-nav-text">Asset Registration</span></a></li>
                     <li class="nav-item"><a href="findings.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="FD" class="<?= $navClass(['findings.php']) ?>"><span class="srm-nav-text">Findings & Response</span></a></li>
-                    <li class="nav-item"><a href="control_checklist.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="CC" class="<?= $navClass(['control_checklist.php']) ?>"><span class="srm-nav-text">Control Checklist</span></a></li>
                     <li class="nav-item"><a href="report.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="RP" class="<?= $navClass(['report.php']) ?>"><span class="srm-nav-text">Report (View)</span></a></li>
                 <?php endif; ?>
             <?php endif; ?>

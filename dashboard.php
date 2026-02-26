@@ -65,7 +65,7 @@ if ($userRole === 'auditee') {
 if ($audit_id) {
     // Role-based audit access check
     if ($userRole === 'auditee') {
-        $stmt = $pdo->prepare("SELECT a.*, o.organization_name, o.industry FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id JOIN audit_auditees aa ON aa.audit_id = a.id WHERE a.id = ? AND aa.user_id = ?");
+        $stmt = $pdo->prepare("SELECT a.*, o.organization_name, o.industry FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id JOIN audit_auditees aa ON aa.audit_id = a.id WHERE a.id = ? AND aa.auditee_user_id = ?");
         $stmt->execute([$audit_id, $userId]);
     } elseif ($userRole === 'admin') {
         $stmt = $pdo->prepare("SELECT a.*, o.organization_name, o.industry FROM audit_sessions a JOIN organizations o ON a.organization_id = o.id WHERE a.id = ?");
