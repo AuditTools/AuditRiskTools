@@ -27,7 +27,7 @@ $userId = $_SESSION['user_id'];
 $action = $_GET['action'] ?? '';
 
 // Block auditee from write operations
-$writeActions = ['add', 'update', 'delete'];
+$writeActions = ['add', 'update', 'delete', 'toggle_status'];
 if (in_array($action, $writeActions, true)) {
     requireWriteAccess();
 }
@@ -133,6 +133,25 @@ try {
             echo json_encode(['success' => true, 'data' => $org]);
             break;
             
+        case 'toggle_status':
+            // Admin only: activate/deactivate organization
+            if (($_SESSION['user_role'] ?? '') !== 'admin') {
+                throw new Exception('Only admin can toggle organization status');
+            }
+            $data = json_decode(file_get_contents('php://input'), true);
+            $orgId = intval($data['id'] ?? 0);
+            $activate = !empty($data['activate']);
+            
+            if ($orgId <= 0) throw new Exception('Invalid organization ID');
+            
+            $stmt = $pdo->prepare("UPDATE organizations SET is_active = ?, updated_at = NOW() WHERE id = ?");
+            $stmt->execute([$activate ? 1 : 0, $orgId]);
+            
+            logAction($pdo, $userId, $activate ? 'ACTIVATE_ORGANIZATION' : 'DEACTIVATE_ORGANIZATION', 'organizations', $orgId);
+            
+            echo json_encode(['success' => true, 'message' => 'Organization ' . ($activate ? 'activated' : 'deactivated') . ' successfully']);
+            break;
+
         case 'list':
             // List all organizations for user
             $stmt = $pdo->prepare("SELECT o.*, 

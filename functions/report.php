@@ -154,4 +154,81 @@ function mapCountPairs($rows, $keyName) {
     }
     return $result;
 }
+
+/**
+ * Load the latest saved AI report for a given audit.
+ */
+function loadSavedAiReport($pdo, $auditId) {
+    try {
+        $aiCols = $pdo->query("SHOW COLUMNS FROM ai_reports")->fetchAll(PDO::FETCH_COLUMN);
+        $aiAuditCol   = in_array('audit_session_id', $aiCols) ? 'audit_session_id' : 'audit_id';
+        $aiContentCol = in_array('report_content', $aiCols) ? 'report_content' : 'full_report';
+        $aiModelCol   = in_array('model_used', $aiCols) ? 'model_used' : 'ai_model';
+        $aiTimeCol    = in_array('created_at', $aiCols) ? 'created_at' : 'generated_at';
+        $stmt = $pdo->prepare("SELECT `$aiContentCol` AS content, `$aiModelCol` AS model, `$aiTimeCol` AS created_at FROM ai_reports WHERE `$aiAuditCol` = ? ORDER BY `$aiTimeCol` DESC LIMIT 1");
+        $stmt->execute([$auditId]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    } catch (Exception $e) {
+        return null;
+    }
+}
+
+/**
+ * Convert markdown text to HTML (lightweight server-side renderer).
+ */
+function markdownToHtml($text) {
+    if (empty($text)) return '';
+
+    $text = str_replace("\r\n", "\n", $text);
+
+    // Escape HTML entities first
+    $text = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
+
+    // Horizontal rules
+    $text = preg_replace('/^-{3,}$/m', '<hr>', $text);
+    $text = preg_replace('/^\*{3,}$/m', '<hr>', $text);
+
+    // Headers (process from h6 down to h1)
+    $text = preg_replace('/^######\s+(.+)$/m', '<h6>$1</h6>', $text);
+    $text = preg_replace('/^#####\s+(.+)$/m', '<h5>$1</h5>', $text);
+    $text = preg_replace('/^####\s+(.+)$/m', '<h4>$1</h4>', $text);
+    $text = preg_replace('/^###\s+(.+)$/m', '<h3>$1</h3>', $text);
+    $text = preg_replace('/^##\s+(.+)$/m', '<h2>$1</h2>', $text);
+    $text = preg_replace('/^#\s+(.+)$/m', '<h1>$1</h1>', $text);
+
+    // Bold and italic
+    $text = preg_replace('/\*\*\*(.+?)\*\*\*/', '<strong><em>$1</em></strong>', $text);
+    $text = preg_replace('/\*\*(.+?)\*\*/', '<strong>$1</strong>', $text);
+    $text = preg_replace('/\*(.+?)\*/', '<em>$1</em>', $text);
+
+    // Unordered lists (- or *)
+    $text = preg_replace_callback('/(?:^[\-\*]\s+.+\n?)+/m', function($m) {
+        $items = preg_replace('/^[\-\*]\s+(.+)$/m', '<li>$1</li>', trim($m[0]));
+        return '<ul>' . $items . '</ul>';
+    }, $text);
+
+    // Ordered lists
+    $text = preg_replace_callback('/(?:^\d+\.\s+.+\n?)+/m', function($m) {
+        $items = preg_replace('/^\d+\.\s+(.+)$/m', '<li>$1</li>', trim($m[0]));
+        return '<ol>' . $items . '</ol>';
+    }, $text);
+
+    // Paragraphs: split on double newlines
+    $blocks = preg_split('/\n{2,}/', $text);
+    $result = [];
+    foreach ($blocks as $block) {
+        $block = trim($block);
+        if (empty($block)) continue;
+        // Don't wrap already-wrapped block elements
+        if (preg_match('/^<(h[1-6]|ul|ol|hr|div|table|blockquote)/', $block)) {
+            $result[] = $block;
+        } else {
+            // Convert single newlines to <br>
+            $block = str_replace("\n", '<br>', $block);
+            $result[] = '<p>' . $block . '</p>';
+        }
+    }
+
+    return implode("\n", $result);
+}
 ?>

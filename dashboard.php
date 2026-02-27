@@ -62,10 +62,14 @@ $assetCount = 0;
 $findingCount = 0;
 $selectedOrgId = intval($_GET['org_id'] ?? 0);
 
-// Notifications count for auditee
+// Notifications for all roles
 $notifCount = 0;
-if ($userRole === 'auditee') {
+$notifications = [];
+try {
     $notifCount = getUnreadNotificationCount($pdo, $userId);
+    $notifications = getNotifications($pdo, $userId, 15);
+} catch (Exception $e) {
+    // Table may not exist yet — silently ignore
 }
 
 if ($audit_id) {
@@ -104,12 +108,76 @@ include 'includes/sidebar.php';
 ?>
 
 <div class="container mt-4">
-    <h2 class="mb-4">
-        Dashboard
-        <?php if ($userRole === 'auditee' && $notifCount > 0): ?>
-            <span class="badge bg-danger ms-2" title="Unread Notifications"><?php echo $notifCount; ?></span>
-        <?php endif; ?>
-    </h2>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">Dashboard</h2>
+        <div class="position-relative">
+            <button class="btn btn-outline-secondary position-relative" type="button" id="notifToggleBtn" title="Notifications">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 16 16"><path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2M8 1.918l-.797.161A4 4 0 0 0 4 6c0 .628-.134 2.197-.459 3.742-.16.767-.376 1.566-.663 2.258h10.244c-.287-.692-.502-1.49-.663-2.258C12.134 8.197 12 6.628 12 6a4 4 0 0 0-3.203-3.92zM14.22 12c.223.447.481.801.78 1H1c.299-.199.557-.553.78-1C2.68 10.2 3 6.88 3 6c0-2.42 1.72-4.44 4.005-4.901a1 1 0 1 1 1.99 0A5 5 0 0 1 13 6c0 .88.32 4.2 1.22 6"/></svg>
+                <?php if ($notifCount > 0): ?>
+                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size:0.65rem;">
+                        <?= $notifCount > 99 ? '99+' : $notifCount ?>
+                    </span>
+                <?php endif; ?>
+            </button>
+
+            <!-- Notification dropdown panel -->
+            <div id="notifPanel" class="card shadow-lg border position-absolute end-0 mt-1" style="width:380px; max-height:450px; z-index:1060; display:none;">
+                <div class="card-header d-flex justify-content-between align-items-center py-2">
+                    <strong style="font-size:0.9rem;">Notifications</strong>
+                    <?php if ($notifCount > 0): ?>
+                        <button class="btn btn-sm btn-link text-decoration-none p-0" id="markAllReadBtn" style="font-size:0.8rem;">Mark all read</button>
+                    <?php endif; ?>
+                </div>
+                <div class="card-body p-0" style="max-height:370px; overflow-y:auto;">
+                    <?php if (empty($notifications)): ?>
+                        <div class="text-center text-muted py-4" style="font-size:0.85rem;">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="currentColor" class="mb-2 text-secondary" viewBox="0 0 16 16"><path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2M8 1.918l-.797.161A4 4 0 0 0 4 6c0 .628-.134 2.197-.459 3.742-.16.767-.376 1.566-.663 2.258h10.244c-.287-.692-.502-1.49-.663-2.258C12.134 8.197 12 6.628 12 6a4 4 0 0 0-3.203-3.92zM14.22 12c.223.447.481.801.78 1H1c.299-.199.557-.553.78-1C2.68 10.2 3 6.88 3 6c0-2.42 1.72-4.44 4.005-4.901a1 1 0 1 1 1.99 0A5 5 0 0 1 13 6c0 .88.32 4.2 1.22 6"/></svg>
+                            <div>No notifications yet</div>
+                        </div>
+                    <?php else: ?>
+                        <ul class="list-group list-group-flush">
+                            <?php foreach ($notifications as $notif):
+                                $isUnread = !$notif['is_read'];
+                                $typeIcons = [
+                                    'audit_assigned'     => ['icon' => '📋', 'color' => 'primary'],
+                                    'finding_created'    => ['icon' => '⚠️', 'color' => 'warning'],
+                                    'finding_closed'     => ['icon' => '✅', 'color' => 'success'],
+                                    'finding_reopened'   => ['icon' => '🔄', 'color' => 'danger'],
+                                    'response_submitted' => ['icon' => '💬', 'color' => 'info'],
+                                    'evidence_reviewed'  => ['icon' => '📎', 'color' => 'secondary'],
+                                ];
+                                $meta = $typeIcons[$notif['type']] ?? ['icon' => '🔔', 'color' => 'secondary'];
+                                $timeAgo = '';
+                                $created = strtotime($notif['created_at']);
+                                $diff = time() - $created;
+                                if ($diff < 60) $timeAgo = 'just now';
+                                elseif ($diff < 3600) $timeAgo = floor($diff/60) . 'm ago';
+                                elseif ($diff < 86400) $timeAgo = floor($diff/3600) . 'h ago';
+                                elseif ($diff < 604800) $timeAgo = floor($diff/86400) . 'd ago';
+                                else $timeAgo = date('M d', $created);
+                            ?>
+                                <li class="list-group-item px-3 py-2 notif-item <?= $isUnread ? 'bg-light border-start border-3 border-' . $meta['color'] : '' ?>"
+                                    data-notif-id="<?= intval($notif['id']) ?>"
+                                    <?php if ($notif['audit_id']): ?>data-audit-id="<?= intval($notif['audit_id']) ?>"<?php endif; ?>
+                                    style="cursor:pointer; font-size:0.85rem;">
+                                    <div class="d-flex gap-2">
+                                        <span style="font-size:1.1rem;"><?= $meta['icon'] ?></span>
+                                        <div class="flex-grow-1">
+                                            <div class="<?= $isUnread ? 'fw-semibold' : '' ?>"><?= htmlspecialchars($notif['message']) ?></div>
+                                            <small class="text-muted"><?= $timeAgo ?></small>
+                                        </div>
+                                        <?php if ($isUnread): ?>
+                                            <span class="bg-<?= $meta['color'] ?> rounded-circle d-inline-block" style="width:8px;height:8px;margin-top:6px;flex-shrink:0;"></span>
+                                        <?php endif; ?>
+                                    </div>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <?php if (isset($_GET['error']) && $_GET['error'] === 'access_denied'): ?>
         <div class="alert alert-danger alert-dismissible fade show" role="alert">
@@ -305,43 +373,118 @@ include 'includes/sidebar.php';
 </div>
 
 <script>
-const orgSelect = document.getElementById('orgSelect');
-const auditSelect = document.getElementById('auditSelect');
+// --- Org/Audit switcher (auditor & admin only) ---
+(function() {
+    const orgSelect = document.getElementById('orgSelect');
+    const auditSelect = document.getElementById('auditSelect');
+    const auditSwitcher = document.getElementById('auditSwitcher');
 
-function filterAuditsByOrg() {
-    const orgId = orgSelect.value;
-
-    Array.from(auditSelect.options).forEach((opt, index) => {
-        if (index === 0) {
-            opt.hidden = false;
-            return;
+    if (orgSelect && auditSelect) {
+        function filterAuditsByOrg() {
+            const orgId = orgSelect.value;
+            Array.from(auditSelect.options).forEach((opt, index) => {
+                if (index === 0) { opt.hidden = false; return; }
+                const optionOrgId = opt.dataset.orgId || '';
+                opt.hidden = orgId !== '' && optionOrgId !== orgId;
+            });
+            if (auditSelect.selectedOptions.length && auditSelect.selectedOptions[0].hidden) {
+                auditSelect.value = '';
+            }
         }
-        const optionOrgId = opt.dataset.orgId || '';
-        opt.hidden = orgId !== '' && optionOrgId !== orgId;
+        orgSelect.addEventListener('change', filterAuditsByOrg);
+        filterAuditsByOrg();
+    }
+
+    if (auditSwitcher) {
+        auditSwitcher.addEventListener('submit', function (event) {
+            event.preventDefault();
+            const selectedAuditId = auditSelect ? auditSelect.value : '';
+            const selectedOrgId = orgSelect ? orgSelect.value : '';
+            if (selectedAuditId) {
+                window.location.href = 'dashboard.php?audit_id=' + encodeURIComponent(selectedAuditId);
+                return;
+            }
+            if (selectedOrgId) {
+                window.location.href = 'dashboard.php?org_id=' + encodeURIComponent(selectedOrgId);
+            }
+        });
+    }
+})();
+
+// --- Notification panel ---
+(function() {
+    const toggleBtn = document.getElementById('notifToggleBtn');
+    const panel = document.getElementById('notifPanel');
+    const markAllBtn = document.getElementById('markAllReadBtn');
+    if (!toggleBtn || !panel) return;
+
+    // Toggle panel open/close
+    toggleBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const isOpen = panel.style.display !== 'none';
+        panel.style.display = isOpen ? 'none' : 'block';
     });
 
-    if (auditSelect.selectedOptions.length && auditSelect.selectedOptions[0].hidden) {
-        auditSelect.value = '';
+    // Close panel when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!panel.contains(e.target) && e.target !== toggleBtn) {
+            panel.style.display = 'none';
+        }
+    });
+
+    // Click a notification → mark as read & navigate to audit
+    document.querySelectorAll('.notif-item').forEach(function(item) {
+        item.addEventListener('click', function() {
+            const notifId = this.dataset.notifId;
+            const auditId = this.dataset.auditId;
+
+            // Mark this notification as read
+            fetch('api/notification_actions.php?action=mark_read', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: [parseInt(notifId)] })
+            }).then(function() {
+                if (auditId) {
+                    window.location.href = 'findings.php?audit_id=' + auditId;
+                } else {
+                    window.location.reload();
+                }
+            });
+        });
+    });
+
+    // Mark all as read
+    if (markAllBtn) {
+        markAllBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            fetch('api/notification_actions.php?action=mark_all_read', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    // Remove unread styling
+                    document.querySelectorAll('.notif-item').forEach(function(item) {
+                        item.classList.remove('bg-light', 'border-start', 'border-3',
+                            'border-primary', 'border-warning', 'border-success',
+                            'border-danger', 'border-info', 'border-secondary');
+                        const dot = item.querySelector('.rounded-circle');
+                        if (dot) dot.remove();
+                        const fw = item.querySelector('.fw-semibold');
+                        if (fw) fw.classList.remove('fw-semibold');
+                    });
+                    // Remove badge
+                    const badge = toggleBtn.querySelector('.badge');
+                    if (badge) badge.remove();
+                    // Remove "Mark all read" button
+                    markAllBtn.remove();
+                }
+            });
+        });
     }
-}
-
-orgSelect.addEventListener('change', filterAuditsByOrg);
-filterAuditsByOrg();
-
-document.getElementById('auditSwitcher').addEventListener('submit', function (event) {
-    event.preventDefault();
-    const selectedAuditId = auditSelect.value;
-    const selectedOrgId = orgSelect.value;
-
-    if (selectedAuditId) {
-        window.location.href = 'dashboard.php?audit_id=' + encodeURIComponent(selectedAuditId);
-        return;
-    }
-
-    if (selectedOrgId) {
-        window.location.href = 'dashboard.php?org_id=' + encodeURIComponent(selectedOrgId);
-    }
-});
+})();
 </script>
 
 <?php 

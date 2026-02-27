@@ -423,4 +423,23 @@ function getNotifications($pdo, $userId = null, $limit = 20) {
     $stmt->execute([$userId, $limit]);
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
+
+/**
+ * Mark specific notifications as read.
+ */
+function markNotificationsRead($pdo, $notificationIds, $userId) {
+    if (empty($notificationIds)) return;
+    $placeholders = implode(',', array_fill(0, count($notificationIds), '?'));
+    $params = array_merge($notificationIds, [$userId]);
+    $stmt = $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE id IN ($placeholders) AND user_id = ?");
+    $stmt->execute($params);
+}
+
+/**
+ * Mark ALL notifications as read for a user.
+ */
+function markAllNotificationsRead($pdo, $userId) {
+    $stmt = $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0");
+    $stmt->execute([$userId]);
+}
 ?>

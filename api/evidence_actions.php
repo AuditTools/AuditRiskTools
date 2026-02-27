@@ -116,8 +116,8 @@ try {
 
                 // Store in database
                 $stmt = $pdo->prepare("INSERT INTO audit_evidence
-                    (finding_id, audit_id, original_filename, stored_filename, file_path, file_type, file_size, evidence_type, description)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    (finding_id, audit_id, original_filename, stored_filename, file_path, file_type, file_size, evidence_type, description, uploaded_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                 $stmt->execute([
                     $findingId,
                     $auditId,
@@ -128,6 +128,7 @@ try {
                     $fileSize,
                     $evidenceType,
                     $description,
+                    $userId,
                 ]);
                 
                 $uploadedCount++;
@@ -165,10 +166,12 @@ try {
                 }
             }
 
-            $stmt = $pdo->prepare("SELECT id, original_filename, file_path, file_type, file_size, evidence_type, description, created_at
-                FROM audit_evidence
-                WHERE finding_id = ? AND audit_id = ?
-                ORDER BY created_at DESC");
+            $stmt = $pdo->prepare("SELECT ae.id, ae.original_filename, ae.file_path, ae.file_type, ae.file_size, ae.evidence_type, ae.description, ae.created_at, ae.uploaded_by, ae.evidence_status, ae.review_notes,
+                    COALESCE(u.name, 'Unknown') AS uploader_name, COALESCE(u.role, '') AS uploader_role
+                FROM audit_evidence ae
+                LEFT JOIN users u ON ae.uploaded_by = u.id
+                WHERE ae.finding_id = ? AND ae.audit_id = ?
+                ORDER BY ae.created_at DESC");
             $stmt->execute([$findingId, $auditId]);
             $evidence = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -218,6 +221,57 @@ try {
             $stmt->execute([$evidenceId]);
 
             echo json_encode(['success' => true, 'message' => 'Evidence deleted']);
+            break;
+
+        case 'review':
+            // Auditor-only: accept, reject, or request revision for evidence
+            $role = $_SESSION['user_role'] ?? 'auditor';
+            if ($role !== 'auditor' && $role !== 'admin') {
+                throw new Exception('Only auditors can review evidence');
+            }
+
+            $data = json_decode(file_get_contents('php://input'), true);
+            $evidenceId = intval($data['evidence_id'] ?? 0);
+            $newStatus = $data['evidence_status'] ?? '';
+            $reviewNotes = trim($data['review_notes'] ?? '');
+
+            if (isset($data['csrf_token']) && !verifyCSRFToken($data['csrf_token'])) {
+                throw new Exception('Invalid CSRF token');
+            }
+
+            $allowedStatuses = ['Pending Review', 'Accepted', 'Rejected', 'Needs Revision'];
+            if (!in_array($newStatus, $allowedStatuses)) {
+                throw new Exception('Invalid evidence status');
+            }
+
+            // Verify auditor owns the org for this evidence
+            $stmt = $pdo->prepare("SELECT ae.id FROM audit_evidence ae
+                JOIN findings f ON ae.finding_id = f.id
+                JOIN audit_sessions a ON f.audit_id = a.id
+                JOIN organizations o ON a.organization_id = o.id
+                WHERE ae.id = ? AND o.user_id = ?");
+            $stmt->execute([$evidenceId, $userId]);
+            if (!$stmt->fetch()) {
+                throw new Exception('Evidence not found or access denied');
+            }
+
+            $stmt = $pdo->prepare("UPDATE audit_evidence SET evidence_status = ?, review_notes = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ?");
+            $stmt->execute([$newStatus, $reviewNotes, $userId, $evidenceId]);
+
+            // Notify the uploader about the review result
+            $stmtUploader = $pdo->prepare("SELECT ae.uploaded_by, ae.original_filename, f.audit_id FROM audit_evidence ae JOIN findings f ON ae.finding_id = f.id WHERE ae.id = ?");
+            $stmtUploader->execute([$evidenceId]);
+            $uploaderInfo = $stmtUploader->fetch(PDO::FETCH_ASSOC);
+            if ($uploaderInfo && $uploaderInfo['uploaded_by'] && $uploaderInfo['uploaded_by'] != $userId) {
+                $statusMsg = $newStatus === 'Accepted' ? 'Your evidence has been accepted' :
+                            ($newStatus === 'Rejected' ? 'Your evidence was rejected' :
+                             'Your evidence needs revision');
+                $msg = $statusMsg . ': "' . $uploaderInfo['original_filename'] . '"';
+                if (!empty($reviewNotes)) $msg .= ' — Note: ' . $reviewNotes;
+                createNotification($pdo, $uploaderInfo['uploaded_by'], $uploaderInfo['audit_id'], 'evidence_reviewed', $msg);
+            }
+
+            echo json_encode(['success' => true, 'message' => 'Evidence marked as ' . $newStatus]);
             break;
 
         default:
