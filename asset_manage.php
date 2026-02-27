@@ -132,14 +132,12 @@ if ($audit_id > 0 && empty($pageError)) {
         <div class="alert alert-warning">Choose an audit session first to manage assets.</div>
     <?php else: ?>
 
-    <!-- Add Asset Form -->
-    <?php if ($userRole === 'auditee' || $userRole === 'auditor'): ?>
+    <!-- Add Asset Form (Auditee only — GRC Segregation of Duties) -->
+    <?php if ($userRole === 'auditee'): ?>
     <div class="card shadow-sm mb-4">
-        <div class="card-header <?= $userRole === 'auditee' ? 'bg-info text-white' : '' ?>">
-            <h5 class="mb-0"><?= $userRole === 'auditee' ? 'Register New Asset' : 'Add Asset' ?></h5>
-            <?php if ($userRole === 'auditee'): ?>
-                <small>Register assets for auditor review. CIA ratings will be set by the auditor.</small>
-            <?php endif; ?>
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0">Register New Asset</h5>
+            <small>Register assets for auditor review. CIA ratings will be set by the auditor.</small>
         </div>
         <div class="card-body">
 
@@ -190,33 +188,13 @@ if ($audit_id > 0 && empty($pageError)) {
                     </div>
                 </div>
 
-                <?php if ($userRole === 'auditor'): ?>
-                <!-- CIA Ratings: Auditor only -->
-                <div class="row mb-3">
-                    <div class="col-md-4">
-                        <label>Confidentiality (1-5) *</label>
-                        <input type="number" min="1" max="5" name="confidentiality" class="form-control" required>
-                    </div>
-
-                    <div class="col-md-4">
-                        <label>Integrity (1-5) *</label>
-                        <input type="number" min="1" max="5" name="integrity" class="form-control" required>
-                    </div>
-
-                    <div class="col-md-4">
-                        <label>Availability (1-5) *</label>
-                        <input type="number" min="1" max="5" name="availability" class="form-control" required>
-                    </div>
-                </div>
-                <?php else: ?>
-                <!-- Auditee: CIA defaults to 0 (pending auditor review) -->
+                <?php /* Auditee: CIA defaults to 1 (pending auditor review) */ ?>
                 <input type="hidden" name="confidentiality" value="1">
                 <input type="hidden" name="integrity" value="1">
                 <input type="hidden" name="availability" value="1">
-                <?php endif; ?>
 
                 <button type="submit" class="btn btn-primary">
-                    <?= $userRole === 'auditee' ? 'Register Asset' : 'Add Asset' ?>
+                    Register Asset
                 </button>
 
             </form>

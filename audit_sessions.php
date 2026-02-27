@@ -7,15 +7,17 @@ requireLogin();
 requireAuditor(); // Only admin/auditor can manage audit sessions
 
 $userId = $_SESSION['user_id'];
+$userRole = $_SESSION['user_role'] ?? 'auditor';
 
 // Ambil org_id dari URL
 $orgId = intval($_GET['org_id'] ?? 0);
 
 if ($orgId <= 0) {
-    die("Invalid organization.");
+    header('Location: organizations.php');
+    exit();
 }
 
-// Verifikasi organization milik user
+// Verifikasi organization — auditor must own it
 $stmt = $pdo->prepare("SELECT id, organization_name FROM organizations WHERE id = ? AND user_id = ?");
 $stmt->execute([$orgId, $userId]);
 $organization = $stmt->fetch(PDO::FETCH_ASSOC);

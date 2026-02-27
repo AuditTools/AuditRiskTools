@@ -194,7 +194,27 @@ $navClass = function ($pages) use ($currentPage) {
         </div>
         <hr>
         <ul class="nav flex-column srm-nav-list">
-            <li class="nav-item"><a href="dashboard.php" data-short="DB" class="<?= $navClass(['dashboard.php']) ?>"><span class="srm-nav-text">Dashboard</span></a></li>
+            <?php
+            // Sidebar notification badge
+            $sidebarNotifCount = 0;
+            if (isset($pdo) && !empty($_SESSION['user_id'])) {
+                try {
+                    $stmtNotif = $pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0");
+                    $stmtNotif->execute([intval($_SESSION['user_id'])]);
+                    $sidebarNotifCount = (int)$stmtNotif->fetchColumn();
+                } catch (Exception $e) {
+                    // Table may not exist yet
+                }
+            }
+            ?>
+            <li class="nav-item">
+                <a href="dashboard.php" data-short="DB" class="<?= $navClass(['dashboard.php']) ?> d-flex justify-content-between align-items-center">
+                    <span class="srm-nav-text">Dashboard</span>
+                    <?php if ($sidebarNotifCount > 0): ?>
+                        <span class="badge bg-danger rounded-pill srm-nav-text" style="font-size:0.65rem;"><?= $sidebarNotifCount > 99 ? '99+' : $sidebarNotifCount ?></span>
+                    <?php endif; ?>
+                </a>
+            </li>
 
             <?php $role = $_SESSION['user_role'] ?? 'auditor'; ?>
 
@@ -202,20 +222,12 @@ $navClass = function ($pages) use ($currentPage) {
                 <!-- Admin: Full oversight + management -->
                 <li class="nav-item"><a href="user_management.php" data-short="UM" class="<?= $navClass(['user_management.php']) ?>"><span class="srm-nav-text">User Management</span></a></li>
                 <li class="nav-item"><a href="organizations.php" data-short="OR" class="<?= $navClass(['organizations.php']) ?>"><span class="srm-nav-text">Organizations</span></a></li>
-                <li class="nav-item"><a href="audit_sessions.php" data-short="AS" class="<?= $navClass(['audit_sessions.php']) ?>"><span class="srm-nav-text">Audit Sessions</span></a></li>
-                <?php if (!empty($_SESSION['active_audit_id'])): ?>
-                    <li class="nav-item"><a href="asset_manage.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="AM" class="<?= $navClass(['asset_manage.php']) ?>"><span class="srm-nav-text">Asset Management</span></a></li>
-                    <li class="nav-item"><a href="vulnerability_assessment.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="VA" class="<?= $navClass(['vulnerability_assessment.php']) ?>"><span class="srm-nav-text">Vuln Assessment</span></a></li>
-                    <li class="nav-item"><a href="control_checklist.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="CC" class="<?= $navClass(['control_checklist.php']) ?>"><span class="srm-nav-text">Control Checklist</span></a></li>
-                    <li class="nav-item"><a href="findings.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="FD" class="<?= $navClass(['findings.php']) ?>"><span class="srm-nav-text">Findings</span></a></li>
-                    <li class="nav-item"><a href="report.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="RP" class="<?= $navClass(['report.php']) ?>"><span class="srm-nav-text">Report</span></a></li>
-                <?php endif; ?>
+    
             <?php endif; ?>
 
             <?php if ($role === 'auditor'): ?>
                 <!-- Auditor: Full audit workflow -->
                 <li class="nav-item"><a href="organizations.php" data-short="OR" class="<?= $navClass(['organizations.php']) ?>"><span class="srm-nav-text">Organizations</span></a></li>
-                <li class="nav-item"><a href="audit_sessions.php" data-short="AS" class="<?= $navClass(['audit_sessions.php']) ?>"><span class="srm-nav-text">Audit Sessions</span></a></li>
                 <?php if (!empty($_SESSION['active_audit_id'])): ?>
                     <li class="nav-item"><a href="asset_manage.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="AM" class="<?= $navClass(['asset_manage.php']) ?>"><span class="srm-nav-text">Asset Management</span></a></li>
                     <li class="nav-item"><a href="vulnerability_assessment.php?audit_id=<?= intval($_SESSION['active_audit_id']) ?>" data-short="VA" class="<?= $navClass(['vulnerability_assessment.php']) ?>"><span class="srm-nav-text">Vuln Assessment</span></a></li>

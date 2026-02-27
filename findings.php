@@ -385,7 +385,7 @@ try {
         </tr>
         <tr>
             <td colspan="<?= $userRole === 'auditor' ? 9 : 8 ?>">
-                <details>
+                <details <?= $userRole === 'auditee' ? 'open' : '' ?>>
                     <summary class="cursor-pointer" style="cursor: pointer;">
                         <strong>Details & Evidence</strong>
                         <?php if (!empty($f['management_response'])): ?>
@@ -438,45 +438,108 @@ try {
                             </div>
                         <?php else: ?>
                             <?php
-                            // Fetch evidence for this finding
-                            $stmtEvi = $pdo->prepare("SELECT id, original_filename, stored_filename, file_path, evidence_type, created_at FROM audit_evidence WHERE finding_id = ? ORDER BY created_at DESC");
+                            // Fetch evidence for this finding with uploader info
+                            $stmtEvi = $pdo->prepare("SELECT ae.id, ae.original_filename, ae.stored_filename, ae.file_path, ae.evidence_type, ae.created_at, ae.uploaded_by, ae.evidence_status, ae.review_notes,
+                                    COALESCE(u.name, 'Unknown') AS uploader_name, COALESCE(u.role, '') AS uploader_role
+                                FROM audit_evidence ae
+                                LEFT JOIN users u ON ae.uploaded_by = u.id
+                                WHERE ae.finding_id = ? ORDER BY ae.created_at DESC");
                             $stmtEvi->execute([$f['id']]);
                             $evidence = $stmtEvi->fetchAll(PDO::FETCH_ASSOC);
-                            
-                            if (count($evidence) > 0):
                             ?>
-                            <table class="table table-sm">
-                                <thead><tr><th>File</th><th>Type</th><th>Uploaded</th><th>Action</th></tr></thead>
+
+                            <?php if ($userRole === 'auditee'): ?>
+                                <h6 class="text-primary"><i class="fas fa-upload"></i> Upload Evidence</h6>
+                                <p class="text-muted" style="font-size:0.85rem;">Upload documents, screenshots, or files that prove this control has been implemented or remediated.</p>
+                                <form class="evidenceUploadForm mb-3" enctype="multipart/form-data" data-finding-id="<?= intval($f['id']) ?>">
+                                    <input type="hidden" name="finding_id" value="<?= intval($f['id']) ?>">
+                                    <input type="hidden" name="audit_id" value="<?= intval($audit_id) ?>">
+                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCSRFToken()) ?>">
+                                    <div class="row g-2 align-items-end">
+                                        <div class="col-md-8">
+                                            <input type="file" name="evidence_file" class="form-control form-control-sm" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx,.txt" multiple>
+                                        </div>
+                                        <div class="col-md-4 d-grid">
+                                            <button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-cloud-upload-alt"></i> Upload Evidence</button>
+                                        </div>
+                                    </div>
+                                    <small class="text-muted d-block mt-1">Accepted: images, PDF, Word, Excel, text (max 10MB each)</small>
+                                </form>
+                            <?php endif; ?>
+
+                            <?php if (count($evidence) > 0): ?>
+                            <h6><?= $userRole === 'auditor' ? '<i class="fas fa-clipboard-check"></i> Evidence Review' : '<i class="fas fa-folder-open"></i> Uploaded Evidence' ?></h6>
+                            <table class="table table-sm table-bordered">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>File</th>
+                                        <th>Type</th>
+                                        <th>Uploaded By</th>
+                                        <th>Date</th>
+                                        <th>Status</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
                                 <tbody>
-                                    <?php foreach ($evidence as $evi): ?>
+                                    <?php foreach ($evidence as $evi): 
+                                        $eviStatus = $evi['evidence_status'] ?? 'Pending Review';
+                                        $statusBadge = 'bg-secondary';
+                                        if ($eviStatus === 'Accepted') $statusBadge = 'bg-success';
+                                        elseif ($eviStatus === 'Rejected') $statusBadge = 'bg-danger';
+                                        elseif ($eviStatus === 'Needs Revision') $statusBadge = 'bg-warning text-dark';
+                                    ?>
                                     <tr>
                                         <td><?= htmlspecialchars($evi['original_filename']) ?></td>
                                         <td><small><?= htmlspecialchars($evi['evidence_type']) ?></small></td>
-                                        <td><small><?= date('M d, Y', strtotime($evi['created_at'])) ?></small></td>
                                         <td>
-                                            <a href="<?= htmlspecialchars($evi['file_path']) ?>" class="btn btn-sm btn-outline-info" target="_blank">
-                                                View
-                                            </a>
-                                            <button class="btn btn-sm btn-outline-danger deleteEviBtn" data-evi-id="<?= intval($evi['id']) ?>">
-                                                Delete
-                                            </button>
+                                            <small>
+                                                <?= htmlspecialchars($evi['uploader_name']) ?>
+                                                <span class="badge <?= ($evi['uploader_role'] === 'auditee') ? 'bg-success' : 'bg-primary' ?>" style="font-size:0.65rem;">
+                                                    <?= htmlspecialchars(ucfirst($evi['uploader_role'])) ?>
+                                                </span>
+                                            </small>
+                                        </td>
+                                        <td><small><?= date('M d, Y', strtotime($evi['created_at'])) ?></small></td>
+                                        <td><span class="badge <?= $statusBadge ?>"><?= htmlspecialchars($eviStatus) ?></span></td>
+                                        <td style="white-space:nowrap;">
+                                            <a href="<?= htmlspecialchars($evi['file_path']) ?>" class="btn btn-sm btn-outline-info" target="_blank">View</a>
+                                            <?php if ($userRole === 'auditor'): ?>
+                                                <div class="btn-group btn-group-sm mt-1">
+                                                    <button class="btn btn-outline-success reviewEviBtn" data-evi-id="<?= intval($evi['id']) ?>" data-status="Accepted" title="Accept evidence">✓</button>
+                                                    <button class="btn btn-outline-warning reviewEviBtn" data-evi-id="<?= intval($evi['id']) ?>" data-status="Needs Revision" title="Needs revision">↻</button>
+                                                    <button class="btn btn-outline-danger reviewEviBtn" data-evi-id="<?= intval($evi['id']) ?>" data-status="Rejected" title="Reject evidence">✕</button>
+                                                </div>
+                                            <?php endif; ?>
+                                            <?php if ($userRole === 'auditor' || (isset($evi['uploaded_by']) && $evi['uploaded_by'] == $userId)): ?>
+                                                <button class="btn btn-sm btn-outline-danger deleteEviBtn mt-1" data-evi-id="<?= intval($evi['id']) ?>">Delete</button>
+                                            <?php endif; ?>
                                         </td>
                                     </tr>
+                                    <?php if (!empty($evi['review_notes'])): ?>
+                                    <tr>
+                                        <td colspan="6" class="bg-light">
+                                            <small class="text-muted"><strong>Auditor note:</strong> <?= htmlspecialchars($evi['review_notes']) ?></small>
+                                        </td>
+                                    </tr>
+                                    <?php endif; ?>
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>
                             <?php else: ?>
-                                <p class="text-muted">No evidence files uploaded yet.</p>
+                                <p class="text-muted"><?= $userRole === 'auditor' ? 'No evidence uploaded by auditee yet.' : 'No evidence files uploaded yet.' ?></p>
                             <?php endif; ?>
                             
+                            <?php if ($userRole === 'auditor'): ?>
                             <hr>
+                            <small class="text-muted d-block mb-2"><i class="fas fa-info-circle"></i> Auditors can upload supplementary documentation if needed.</small>
                             <form class="evidenceUploadForm" enctype="multipart/form-data" data-finding-id="<?= intval($f['id']) ?>">
                                 <input type="hidden" name="finding_id" value="<?= intval($f['id']) ?>">
                                 <input type="hidden" name="audit_id" value="<?= intval($audit_id) ?>">
                                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(generateCSRFToken()) ?>">
                                 <input type="file" name="evidence_file" class="form-control form-control-sm mb-2" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx,.txt" multiple>
-                                <button type="submit" class="btn btn-sm btn-primary">Upload Evidence</button>
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">Upload Documentation</button>
                             </form>
+                            <?php endif; ?>
                         <?php endif; ?>
                     </div>
                 </details>
@@ -539,53 +602,57 @@ document.getElementById('findingAuditSwitcher').addEventListener('submit', funct
 });
 
 <?php if ($audit_id): ?>
-const likelihood  = document.getElementById('likelihood');
-const impact      = document.getElementById('impact');
-const likeValue   = document.getElementById('likeValue');
-const impactValue = document.getElementById('impactValue');
-const riskBadge   = document.getElementById('riskBadge');
 
-function updateRisk() {
-    const risk = likelihood.value * impact.value;
-    riskBadge.textContent = risk;
+// --- Auditor-only: Risk sliders & Add Finding form ---
+(function() {
+    const likelihood  = document.getElementById('likelihood');
+    const impact      = document.getElementById('impact');
+    const likeValue   = document.getElementById('likeValue');
+    const impactValue = document.getElementById('impactValue');
+    const riskBadge   = document.getElementById('riskBadge');
+    const findingForm = document.getElementById('findingForm');
 
-    let color = "badge-srm-success";
-    if (risk >= 6)  color = "badge-srm-warning";
-    if (risk >= 13) color = "badge-srm-danger";
-
-    riskBadge.className = "badge " + color;
-}
-
-likelihood.addEventListener('input', () => {
-    likeValue.textContent = likelihood.value;
-    updateRisk();
-});
-
-impact.addEventListener('input', () => {
-    impactValue.textContent = impact.value;
-    updateRisk();
-});
-
-document.getElementById('findingForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-
-    const formData = new FormData(this);
-
-    fetch('api/finding_actions.php', {
-        method: 'POST',
-        body: formData
-    })
-    
-    .then(res => res.json())
-    .then(data => {
-        if (data.success) {
-            location.reload();
-        } else {
-            alert(data.message);
+    if (likelihood && impact && likeValue && impactValue && riskBadge) {
+        function updateRisk() {
+            const risk = likelihood.value * impact.value;
+            riskBadge.textContent = risk;
+            let color = "badge-srm-success";
+            if (risk >= 6)  color = "badge-srm-warning";
+            if (risk >= 13) color = "badge-srm-danger";
+            riskBadge.className = "badge " + color;
         }
-    })
-    .catch(() => alert("Error saving finding"));
-});
+
+        likelihood.addEventListener('input', () => {
+            likeValue.textContent = likelihood.value;
+            updateRisk();
+        });
+
+        impact.addEventListener('input', () => {
+            impactValue.textContent = impact.value;
+            updateRisk();
+        });
+    }
+
+    if (findingForm) {
+        findingForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            fetch('api/finding_actions.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert(data.message);
+                }
+            })
+            .catch(() => alert("Error saving finding"));
+        });
+    }
+})();
 
 // Enable Close button when date is entered
 document.querySelectorAll('.close-date-input').forEach(input => {
@@ -641,6 +708,41 @@ document.querySelectorAll('.deleteEviBtn').forEach((btn) => {
             }
         })
         .catch(() => alert('Error deleting evidence'));
+    });
+});
+
+// Evidence review handlers (auditor: Accept / Needs Revision / Reject)
+document.querySelectorAll('.reviewEviBtn').forEach((btn) => {
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        const eviId = this.dataset.eviId;
+        const newStatus = this.dataset.status;
+        let reviewNotes = '';
+
+        if (newStatus === 'Rejected' || newStatus === 'Needs Revision') {
+            reviewNotes = prompt('Provide a note for the auditee (reason / what to fix):');
+            if (reviewNotes === null) return; // cancelled
+        }
+
+        fetch('api/evidence_actions.php?action=review', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                evidence_id: eviId,
+                evidence_status: newStatus,
+                review_notes: reviewNotes,
+                csrf_token: '<?= htmlspecialchars(generateCSRFToken()) ?>'
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert(data.message || 'Error reviewing evidence');
+            }
+        })
+        .catch(() => alert('Error reviewing evidence'));
     });
 });
 

@@ -135,6 +135,15 @@ try {
             // 3. Update dashboard metrics using Hybrid function (Removed the 'true' parameter)
             updateAuditMetrics($pdo, $auditId);
             
+            // Notify assigned auditees about the new finding
+            $stmtAuditees = $pdo->prepare("SELECT auditee_user_id FROM audit_auditees WHERE audit_id = ?");
+            $stmtAuditees->execute([$auditId]);
+            $auditeeIds = $stmtAuditees->fetchAll(PDO::FETCH_COLUMN);
+            foreach ($auditeeIds as $auditeeId) {
+                createNotification($pdo, $auditeeId, $auditId, 'finding_created',
+                    "New finding: \"$title\" — " . $riskLevel . " risk. Please review and upload evidence.");
+            }
+
             logAction($pdo, $userId, 'ADD_FINDING', 'findings', $findingId);
 
             echo json_encode(['success' => true, 'message' => 'Finding added', 'finding_id' => $findingId]);
@@ -250,7 +259,18 @@ try {
             $stmt = $pdo->prepare("UPDATE findings SET remediation_status = 'Resolved', remediation_deadline = COALESCE(?, remediation_deadline), updated_at = NOW() WHERE id = ?");
             $stmt->execute([$deadline, $findingId]);
 
-            updateAuditMetrics($pdo, (int)$finding['audit_id']);
+            // Notify assigned auditees that the finding was closed
+            $closedAuditId = (int)$finding['audit_id'];
+            $stmtAuditees = $pdo->prepare("SELECT auditee_user_id FROM audit_auditees WHERE audit_id = ?");
+            $stmtAuditees->execute([$closedAuditId]);
+            $auditeeIds = $stmtAuditees->fetchAll(PDO::FETCH_COLUMN);
+            $findingTitle = $finding['title'] ?? 'Finding';
+            foreach ($auditeeIds as $auditeeId) {
+                createNotification($pdo, $auditeeId, $closedAuditId, 'finding_closed',
+                    "Finding resolved: \"$findingTitle\" has been closed by the auditor.");
+            }
+
+            updateAuditMetrics($pdo, $closedAuditId);
             logAction($pdo, $userId, 'CLOSE_FINDING', 'findings', $findingId);
 
             echo json_encode(['success' => true, 'message' => 'Finding closed successfully']);
@@ -324,7 +344,7 @@ try {
 }
 
 function getFindingForUser($pdo, $findingId, $userId) {
-    $stmt = $pdo->prepare("SELECT f.id, f.audit_id
+    $stmt = $pdo->prepare("SELECT f.id, f.audit_id, f.title
         FROM findings f
         JOIN audit_sessions a ON f.audit_id = a.id
         JOIN organizations o ON a.organization_id = o.id

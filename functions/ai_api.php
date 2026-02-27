@@ -70,7 +70,8 @@ function callGeminiAPI($prompt, $maxTokens = 1000) {
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 15);
     
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -166,9 +167,10 @@ Summary of findings and next steps.
 - Do NOT recalculate any scores or metrics
 - Do NOT add new risks beyond the provided list
 - Only use the data provided above
-- Maximum 2000 words
 - Use professional audit report structure
 - Include actionable, specific recommendations
+- Generate ALL sections completely — do NOT stop early or truncate
+- Ensure every section has substantive content
 
 Generate the complete report now:
 PROMPT;
@@ -229,7 +231,7 @@ PROMPT;
 function generateAuditReport($auditData) {
     try {
         $prompt = buildReportPrompt($auditData);
-        $report = callAI($prompt, 2000);
+        $report = callAI($prompt, 8192);
         
         return [
             'success' => true,
