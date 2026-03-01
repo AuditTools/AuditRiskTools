@@ -12,7 +12,7 @@ A comprehensive Governance, Risk, and Compliance (GRC) platform for conducting c
 - **Organization & Audit Session Management** — Create organizations, configure audit sessions with industry and digital scale context
 - **Asset Inventory** — Auditees register assets; auditors set CIA triad ratings (Confidentiality, Integrity, Availability) with auto-calculated criticality scores
 - **OWASP Vulnerability Assessment** — Checkbox-based vulnerability identification mapped to OWASP Top 10 categories with auto-generated risk scores
-- **NIST CSF Control Checklist** — 35 controls across 5 functions (Identify, Protect, Detect, Respond, Recover) with compliance status tracking
+- **NIST CSF Control Checklist** — 36 controls across 5 functions (Identify, Protect, Detect, Respond, Recover) with compliance status tracking
 - **Findings & Remediation** — Create findings with risk scoring (Likelihood × Impact), track remediation status, management responses, and evidence uploads
 - **AI-Powered Reporting** — Generate executive summaries using Gemini AI, with full PDF report export including audit opinion, risk matrix, and compliance metrics
 
@@ -246,15 +246,7 @@ The system uses **13 tables** following Third Normal Form (3NF):
 
 ---
 
-## Screenshots
 
-> *Add screenshots of your application here*
-
-<!-- 
-![Dashboard](screenshots/dashboard.png)
-![Report](screenshots/report.png)
-![Risk Matrix](screenshots/risk-matrix.png)
--->
 
 ---
 
