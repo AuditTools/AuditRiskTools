@@ -251,7 +251,7 @@
         </div>
         
         <?php if ($allPassed): ?>
-            <a href="index.php" class="btn">🚀 Lanjut ke Aplikasi</a>
+            <a href="/api/index.php" class="btn">🚀 Lanjut ke Aplikasi</a>
         <?php else: ?>
             <div class="error">
                 <h4>🔧 Langkah Perbaikan:</h4>

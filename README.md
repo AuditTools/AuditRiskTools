@@ -6,6 +6,30 @@ A comprehensive Governance, Risk, and Compliance (GRC) platform for conducting c
 
 ---
 
+## Why SRM-Audit? (Problem & Solution)
+
+### The Problem
+In modern cybersecurity governance, risk management, and compliance (GRC), organizations and auditors face critical operational and analytical bottlenecks:
+- **Fragmented & Manual Audit Workflows** — Traditional audits rely on disjointed spreadsheets, email threads, and static word processor documents to manage asset inventories, checklists, findings, and evidence collection. This fragmentation creates version control conflicts, communication silos, and administrative overhead between auditors and auditees.
+- **Subjective & Unquantified Risk Assessment** — Risk calculation in many organizations is often ad-hoc and based on guesswork rather than a standardized mathematical model. Organizations struggle to objectively quantify how industry exposure, digital footprint scale, asset criticality (Confidentiality, Integrity, Availability), and vulnerability likelihood/impact interact to form an accurate organizational risk posture.
+- **Disconnected Compliance Frameworks** — Bridging high-level governance frameworks (such as the **NIST Cybersecurity Framework**) with technical application security standards (such as **OWASP Top 10**) is complex and time-consuming. Audits often treat high-level governance controls and granular web vulnerabilities as separate, siloed exercises.
+- **Inefficient Remediation Tracking & Evidence Verification** — Tracking remediation progress across numerous findings is difficult without a centralized repository for auditees to submit management responses and attach verifiable digital evidence for auditor review.
+- **Complex Executive Translation & Reporting** — Converting technical security findings and compliance checklists into clear, defensible executive summaries, organizational maturity ratings, and definitive audit opinions requires extensive time and specialized writing effort.
+
+### The Solution
+**SRM-Audit** solves these challenges by providing an integrated, automated, and AI-powered web platform designed to streamline the entire cybersecurity audit lifecycle:
+- **Centralized & Collaborative RBAC Platform** — Bridges administrators, auditors, and auditees into a unified workspace. Auditees register asset inventories and upload supporting verification evidence, while auditors configure sessions, evaluate controls, and issue findings with real-time notification workflows.
+- **Defensible Quantitative Risk Calculation Engine** — Replaces subjective guessing with a robust mathematical engine that automatically calculates:
+  - **Exposure Score:** Based on industry baseline risk and digital footprint scale.
+  - **Asset Criticality:** Derived from CIA Triad ratings ((C + I + A) / 3).
+  - **Vulnerability Risk Score:** Using a standard 5×5 Likelihood × Impact matrix.
+  - **Composite Final Risk Score & Level:** Automatically synthesized and classified (Low, Medium, High, Critical) to provide an objective, real-time risk posture.
+- **Unified Multi-Framework Harmonization** — Integrates both technical vulnerability assessments (**OWASP Top 10**) and governance control evaluations (**36 NIST CSF Controls** across Identify, Protect, Detect, Respond, and Recover). A weighted blending engine automatically combines findings compliance (40%) and NIST checklist compliance (60%) into a unified real-time compliance score and maturity level (*Initial*, *Developing*, *Managed*, *Optimized*).
+- **Closed-Loop Remediation & Evidence Management** — Features a built-in evidence repository where auditees can upload supporting files (PDFs, images, documents), submit management responses, and track remediation progress until verified and resolved by auditors.
+- **Automated Audit Opinion & AI-Powered Executive Reporting** — Automatically generates defensible Audit Opinions (*Secure*, *Acceptable Risk*, *Immediate Action Required*) based on compliance thresholds and open high/critical vulnerability counts. Integrates **Google Gemini AI** (as well as OpenAI and Ollama) to generate professional, natural-language executive summaries and exports publication-ready PDF reports with embedded risk matrices and compliance charts.
+
+---
+
 ## Features
 
 ### Core Audit Workflow
@@ -53,13 +77,14 @@ A comprehensive Governance, Risk, and Compliance (GRC) platform for conducting c
 | **AI Integration** | Google Gemini API / OpenAI / Ollama |
 | **Email** | PHPMailer (SMTP) |
 | **Environment** | vlucas/phpdotenv |
+| **Deployment / Cloud** | Vercel Serverless (`vercel-php@0.7.1`), Apache/Nginx, Laragon |
 
 ---
 
 ## Project Structure
 
 ```
-├── api/                    # REST API endpoints
+├── api/                    # REST API endpoints & Vercel routing
 │   ├── ai_actions.php
 │   ├── asset_actions.php
 │   ├── audit_actions.php
@@ -67,6 +92,7 @@ A comprehensive Governance, Risk, and Compliance (GRC) platform for conducting c
 │   ├── checklist_actions.php
 │   ├── evidence_actions.php
 │   ├── finding_actions.php
+│   ├── index.php           # Vercel serverless routing entry point
 │   ├── notification_actions.php
 │   ├── organization_actions.php
 │   ├── report_actions.php
@@ -90,7 +116,7 @@ A comprehensive Governance, Risk, and Compliance (GRC) platform for conducting c
 │   └── chatbot.html
 ├── migrations/             # Database migration scripts
 ├── uploads/evidence/       # Evidence file storage
-├── db/                     # Database scripts (gitignored)
+├── db/                     # Database schema & sample data
 │   ├── database_schema.sql
 │   └── nebula_ecommerce_dummy_data.sql
 ├── dashboard.php           # Main dashboard
@@ -107,8 +133,11 @@ A comprehensive Governance, Risk, and Compliance (GRC) platform for conducting c
 ├── login.php               # Login page
 ├── register.php            # Self-registration (auditor role)
 ├── forgot_pw.php           # Password reset
-└── index.php               # Entry point (redirect)
+├── index.php               # Entry point (redirects to login)
+├── vercel.json             # Vercel serverless deployment config
+└── composer.json           # PHP dependencies & autoloader
 ```
+
 
 ---
 
@@ -188,6 +217,27 @@ A comprehensive Governance, Risk, and Compliance (GRC) platform for conducting c
    http://localhost/AuditRiskTools/
    ```
 
+### Vercel Serverless Deployment
+
+SRM-Audit includes native support for serverless deployment on [Vercel](https://vercel.com/) using the `vercel-php` community runtime.
+
+1. **Push your repository** to GitHub, GitLab, or Bitbucket.
+2. **Import the project** into the Vercel Dashboard.
+3. **Configure Environment Variables** in Vercel Project Settings (connect to a remote MySQL/MariaDB database such as Aiven, Railway, AWS RDS, or PlanetScale):
+   ```env
+   DB_HOST=your-cloud-db-host.com
+   DB_PORT=3306
+   DB_NAME=audit
+   DB_USER=root
+   DB_PASS=your-secure-password
+   AI_PROVIDER=gemini
+   GEMINI_API_KEY=your_gemini_api_key_here
+   APP_ENV=production
+   APP_DEBUG=false
+   APP_URL=https://your-project.vercel.app
+   ```
+4. **Deploy**: Vercel will automatically use `vercel.json` and `vercel-php@0.7.1` to route serverless PHP requests via `api/index.php`.
+
 ---
 
 ## Audit Workflow
@@ -225,7 +275,7 @@ A comprehensive Governance, Risk, and Compliance (GRC) platform for conducting c
 
 ## Database Schema
 
-The system uses **13 tables** following Third Normal Form (3NF):
+The system uses **14 tables** following Third Normal Form (3NF):
 
 | Table | Purpose |
 |-------|---------|
@@ -246,7 +296,21 @@ The system uses **13 tables** following Third Normal Form (3NF):
 
 ---
 
+## Limitations & Future Roadmap
 
+While SRM-Audit provides a robust, rule-based GRC workflow for academic and SME environments, the platform has known technical boundaries and areas for future expansion:
+
+### Current Limitations
+- **Manual Assessment Workflow** — Vulnerability identification and risk scoring rely on auditor data entry and check-lists. The current scope does not include live automated scanning or direct log ingestion (e.g., Nmap, OpenVAS, or Burp Suite XML imports).
+- **Narrative-Only AI Boundary** — Generative AI models (Gemini/OpenAI) operate strictly as narrative processing layers. AI features cannot directly alter database state, re-calculate core risk formulas, or make autonomous compliance decisions.
+- **Simplified Quantitative Scoring** — The risk calculation engine uses deterministic algebraic weighting ($Exposure \times Criticality \times Risk$). It does not yet implement advanced enterprise quantitative models like FAIR (Factor Analysis of Information Risk) or ALE ($Annualized\ Loss\ Expectancy$).
+- **Local Evidence Storage** — Evidence file uploads are stored on local server storage (`uploads/evidence/`). For serverless environments (like Vercel), persistent storage requires external cloud bucket integration.
+
+### Future Roadmap
+- [ ] **Automated Scanner Ingestion** — Support XML/JSON report parsing from Nmap, Nessus, and OWASP ZAP to auto-populate findings.
+- [ ] **Cloud Storage Integration** — Transition evidence management to Amazon S3 or Cloudinary with SHA-256 file hashing for cryptographic non-repudiation.
+- [ ] **Expanded Framework Libraries** — Add mapping support for ISO/IEC 27001:2022 Annex A controls and PCI-DSS 4.0.
+- [ ] **CI/CD Compliance Pipeline Integration** — Webhook API integrations to trigger compliance checks from GitHub Actions / GitLab CI pipelines.
 
 ---
 
